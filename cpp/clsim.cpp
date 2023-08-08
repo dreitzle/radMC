@@ -330,8 +330,10 @@ void CLsim::run(const Config &config)
 
     add_define(build_opts, "C_MUS", config.sim_parameters.mus);
     add_define(build_opts, "C_MUA", config.sim_parameters.mua);
-    add_define(build_opts, "C_GF", config.sim_parameters.g);
     add_define(build_opts, "C_MUT", config.sim_parameters.mus+config.sim_parameters.mua);
+
+    if(config.sim_parameters.g > 1e-4)
+        add_define(build_opts, "C_GF", config.sim_parameters.g);
 
     /* Setup kernels */
     if(!cl_program_main)

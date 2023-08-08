@@ -1,3 +1,6 @@
+#define NATIVE_MATH
+#include <native_math.cl>
+
 #include <MC_planar_header.cl>
 #include <tyche_i.cl>
 #include <scattering_hg.cl>
@@ -57,18 +60,18 @@ __kernel void run(__global tyche_i_state* rng_states_d,
         barrier(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE); 
 
         // sample free path length
-        float free_path_length = -log(tyche_i_float(state))/C_MUS; 
+        float free_path_length = DIVIDE_C(-LOG_C(tyche_i_float(state)),C_MUS); 
         
         // save old z position for radiance calculation
         float zpos_start = photon.zpos;
         
         // calc new z position
-        photon.zpos = photon.zpos + free_path_length*photon.dir.cost;
+        photon.zpos = MAD_C(free_path_length,photon.dir.cost,photon.zpos);
         
         if (photon.zpos <= 0.0f)
         {
             // distance to surface along photon direction
-            free_path_length = -zpos_start/photon.dir.cost;
+            free_path_length = DIVIDE_C(-zpos_start,photon.dir.cost);
 
             // exit point of the photon
             photon.zpos = 0.0f;
@@ -91,7 +94,7 @@ __kernel void run(__global tyche_i_state* rng_states_d,
         else
         {
             // Attenuate photon
-            photon.weight *= exp(-C_MUA*free_path_length);
+            photon.weight *= EXP_C(-C_MUA*free_path_length);
     
             // scattering
             scatter_photon(&photon.dir, &state); // HG phase function
@@ -146,18 +149,18 @@ __kernel void finish(__global tyche_i_state* rng_states_d,
     while(true)
     {
         // sample free path length
-        float free_path_length = -log(tyche_i_float(state))/C_MUS; 
+        float free_path_length = DIVIDE_C(-LOG_C(tyche_i_float(state)),C_MUS); 
         
         // save old z position for radiance calculation
         float zpos_start = photon.zpos;
         
         // calc new z position
-        photon.zpos = photon.zpos + free_path_length*photon.dir.cost;
+        photon.zpos = MAD_C(free_path_length,photon.dir.cost,photon.zpos);
         
         if (photon.zpos <= 0.0f)
         {
             // distance to surface along photon direction
-            free_path_length = -zpos_start/photon.dir.cost;
+            free_path_length = DIVIDE_C(-zpos_start,photon.dir.cost);
 
             // exit point of the photon
             photon.zpos = 0.0f;
@@ -172,7 +175,7 @@ __kernel void finish(__global tyche_i_state* rng_states_d,
             break;
 
         // Attenuate photon
-        photon.weight *= exp(-C_MUA*free_path_length);
+        photon.weight *= EXP_C(-C_MUA*free_path_length);
 
         // scattering
         scatter_photon(&photon.dir, &state); // HG phase function

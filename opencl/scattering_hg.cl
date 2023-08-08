@@ -15,7 +15,7 @@ float phase_function(const float cost)
 
 float phase_function(const float cost)
 {
-    return M_1_4PI_F*(1.0f-C_GF*C_GF)/pow(1.0f+C_GF*C_GF-2.0f*C_GF*cost,1.5f);
+    return DIVIDE_C(M_1_4PI_F*(1.0f-C_GF*C_GF),POWR_C(1.0f+C_GF*C_GF-2.0f*C_GF*cost,1.5f));
 }
 
 #endif //!defined(C_GF)
@@ -25,18 +25,18 @@ void scatter_photon(Dir3d* direction, tyche_i_state* state)
     #if !defined(C_GF) // g = 0
     
     direction->cost = tyche_i_float((*state))*2.0f-1.0f;
-    direction->sint = sqrt(1.0f-direction->cost*direction->cost);
+    direction->sint = SQRT_C(1.0f-direction->cost*direction->cost);
     direction->sinp = sincos(tyche_i_float((*state))*M_2PI_F, &(direction->cosp));
     
     #else // g != 0
 
     // sample angles according to Henyey-Greenstein phase function
-    float temp = (1.0f - C_GF*C_GF)/(1.0f - C_GF + 2.0f*C_GF*tyche_i_float((*state)));
-    float cost = (1.0f + C_GF*C_GF - temp*temp)/(2.0f*C_GF);
+    float temp = DIVIDE_C((1.0f - C_GF*C_GF),(1.0f - C_GF + 2.0f*C_GF*tyche_i_float((*state))));
+    float cost = DIVIDE_C((1.0f + C_GF*C_GF - temp*temp),(2.0f*C_GF));
 
     cost = clamp(cost,-1.0f,1.0f);
     
-    float sint = sqrt(1.0f-cost*cost);
+    float sint = SQRT_C(1.0f-cost*cost);
 
     float cosp;
     float sinp = sincos(tyche_i_float((*state))*M_2PI_F, &cosp);
@@ -49,7 +49,7 @@ void scatter_photon(Dir3d* direction, tyche_i_state* state)
     y = clamp(y,-1.0f,1.0f);
     z = clamp(z,-1.0f,1.0f);
     
-    float den = sqrt(x*x+y*y);
+    float den = SQRT_C(x*x+y*y);
     
     if(den < 1e-6f)
     {
@@ -61,9 +61,9 @@ void scatter_photon(Dir3d* direction, tyche_i_state* state)
     else
     {
         direction->cost = z;
-        direction->sint = sqrt(1.0f-z*z);
-        direction->cosp = x/den;
-        direction->sinp = y/den;
+        direction->sint = SQRT_C(1.0f-z*z);
+        direction->cosp = DIVIDE_C(x,den);
+        direction->sinp = DIVIDE_C(y,den);
     }
     
     #endif //!defined(C_GF)

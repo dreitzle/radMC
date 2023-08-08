@@ -33,14 +33,14 @@ void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
             
             if(fabs(den) < 1e-4f)
             {
-                float dexp = exp(C_MUT/cost_point*z1);
-                float lm = l_path/cost_point;
-                contribution = dexp*lm*(1.0f-lm*den*(0.5f+lm*den/6.0f));
+                float dexp = EXP_C(C_MUT/cost_point*z1);
+                float lm = DIVIDE_C(l_path,cost_point);
+                contribution = dexp*lm*(1.0f-lm*den*(0.5f+lm*DIVIDE_C(den,6.0f)));
             }
             else
             {
-                float dexp = exp(C_MUT/cost_point*z1) - exp(-C_MUA*l_path+C_MUT/cost_point*photon->zpos);
-                contribution = dexp/den;
+                float dexp = EXP_C(DIVIDE_C(C_MUT,cost_point)*z1) - EXP_C(-C_MUA*l_path+DIVIDE_C(C_MUT,cost_point)*photon->zpos);
+                contribution = DIVIDE_C(dexp,den);
             }
 
             detector_loc[phi_point_idx + cost_point_idx*N_PHI] += fabs(C_MUS*photon->weight*pf*contribution);
