@@ -119,6 +119,7 @@ class CLsim
         std::vector<double> detector_sum;
 
         void build_program(const std::string &file, const std::string &opts, std::unique_ptr<cl::Program> &program);
+        void create_buffer(std::unique_ptr<cl::Buffer> &buffer, cl_mem_flags flags, size_t size, void *hostmem = nullptr);
 
     public:
         /* Check for platform and device */

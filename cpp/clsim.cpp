@@ -216,60 +216,50 @@ void CLsim::build_program(const std::string &file, const std::string &opts, std:
     }
 }
 
+void CLsim::create_buffer(std::unique_ptr<cl::Buffer> &buffer, cl_mem_flags flags, size_t size, void *hostmem)
+{
+    cl_int err = 0;
+    buffer = std::make_unique<cl::Buffer>(*context, flags, size, hostmem, &err);
+    if(clCheckError(err))
+        throw std::runtime_error("Buffer creation failed.");
+};
+
 void CLsim::create_buffers(const Config &config)
 {
     const unsigned int threads = config.ocl_config.threads;
     const unsigned int n_costheta = config.mc_config.n_costheta;
     const unsigned int n_phi = config.mc_config.n_phi;
-
-    cl_int err = 0;
     
-    buffer_rng_states = std::make_unique<cl::Buffer>(*context, CL_MEM_READ_WRITE, threads*sizeof(tyche_i_state), nullptr, &err);
-    if(clCheckError(err))
-        throw std::runtime_error("RNG state: Buffer creation failed.");
+    create_buffer(buffer_rng_states, CL_MEM_READ_WRITE, threads*sizeof(tyche_i_state));
 
     simulated_photons_pthread.resize(threads);
     std::fill(simulated_photons_pthread.begin(), simulated_photons_pthread.end(), 0ULL);
 
-    buffer_simulated_photons_pthread = std::make_unique<cl::Buffer>(*context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-        vector_bytes(simulated_photons_pthread), simulated_photons_pthread.data(), &err);
+    create_buffer(buffer_simulated_photons_pthread,CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+        vector_bytes(simulated_photons_pthread), simulated_photons_pthread.data());
 
-    if(clCheckError(err))
-        throw std::runtime_error("simulated_photons_pthread: Buffer creation failed.");
-
-    buffer_photons = std::make_unique<cl::Buffer>(*context, CL_MEM_READ_WRITE, threads*sizeof(Photon), nullptr, &err);
-    if(clCheckError(err))
-        throw std::runtime_error("photons: Buffer creation failed.");
+    create_buffer(buffer_photons, CL_MEM_READ_WRITE, threads*sizeof(Photon));
 
     detector.resize(n_costheta*n_phi*threads);
     std::fill(detector.begin(), detector.end(), 0.0F);
 
-    buffer_detector = std::make_unique<cl::Buffer>(*context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-        vector_bytes(detector), detector.data(), &err);
-
-    if(clCheckError(err))
-        throw std::runtime_error("detector: Buffer creation failed.");
+    create_buffer(buffer_detector, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+        vector_bytes(detector), detector.data());
 
     cost_points.resize(n_costheta);
     for(unsigned int i = 0; i < n_costheta; i++)
         cost_points[i] = (0.5f*std::cos((2.0f*i-1.0f)/(2.0f*n_costheta)*M_PI)-0.5f);
 
-    buffer_cost_points = std::make_unique<cl::Buffer>(*context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-        vector_bytes(cost_points), cost_points.data(), &err);
-
-    if(clCheckError(err))
-        throw std::runtime_error("cost_points: Buffer creation failed.");
+    create_buffer(buffer_cost_points, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+        vector_bytes(cost_points), cost_points.data());
 
     phi_points.resize(n_phi);
     const float phi_step = 2.0f*M_PI/n_phi;
     for(unsigned int i = 0; i < n_phi; i++)
         phi_points[i] = i*phi_step;
 
-    buffer_phi_points = std::make_unique<cl::Buffer>(*context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-        vector_bytes(phi_points), phi_points.data(), &err);
-
-    if(clCheckError(err))
-        throw std::runtime_error("phi_points: Buffer creation failed.");
+    create_buffer(buffer_phi_points, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+        vector_bytes(phi_points), phi_points.data());
 }
 
 void CLsim::seed_rng(const Config &config)
