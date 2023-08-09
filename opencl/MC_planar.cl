@@ -4,6 +4,7 @@
 #include <MC_planar_header.cl>
 #include <tyche_i.cl>
 #include <scattering_hg.cl>
+#include <reflection_transmission.cl>
 #include <detector_integral.cl>
 //~ #include <detector_lf.cl>
 
@@ -11,11 +12,14 @@ void reset_photon(Photon* photon)
 {
     // start new photon: pencil beam perpendicular to surface
     photon->zpos = 0.0f;
-    photon->dir.cost = 1.0f;
-    photon->dir.sint = 0.0f;
+    
+    // initial light source direction
+    photon->dir.cost = INIT_COST;
+    photon->dir.sint = SQRT_C(1.0f - INIT_COST*INIT_COST);
     photon->dir.cosp = 1.0f;
     photon->dir.sinp = 0.0f;
-    photon->weight = 1.0f;
+    
+    photon->weight = INIT_WEIGHT; // reduced weight according to Fresnel
     photon->scat_counter = 0u;
 }
 
@@ -52,7 +56,7 @@ __kernel void run(__global tyche_i_state* rng_states_d,
     for(int idx = 0; idx < N_COSTHETA*N_PHI; ++idx)
         detector_loc[idx] = 0.0f;
     
-    bool need_reset = false;
+    bool was_reflected = false; 
     
     // Main photon loop
     for(uint n_scat_pthread = 0; n_scat_pthread < N_SCAT_PTHREAD; ++n_scat_pthread)
@@ -76,36 +80,43 @@ __kernel void run(__global tyche_i_state* rng_states_d,
             // exit point of the photon
             photon.zpos = 0.0f;
 
-            // reset later, call calc_rad_contribution only once
-            need_reset = true;
+            // reflect later, call calc_rad_contribution only once
+            was_reflected = true;
         }
 
         // calculate contribution to radiance
         barrier(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
         calc_rad_contribution(&photon, free_path_length, zpos_start, detector_loc, cost_points, phi_points);
 
-        // reset or scatter
-        if(need_reset)
-        {
-            reset_photon(&photon);
-            ++simulated_photons_pthread_d[thread_id];
-            need_reset = false;
+        // Attenuate photon
+        photon.weight *= EXP_C(-C_MUA*free_path_length);
+        
+        // reflection
+        if(was_reflected)
+        {   
+            // reflect photon
+            photon.dir.cost *= -1.0f;
+            
+            // reduce weight according to Fresnel
+            photon.weight *= calc_reflectivity(photon.dir.cost);
+            
+            // count interaction
+            ++photon.scat_counter;
+        
+            was_reflected = false;
         }
         else
         {
-            // Attenuate photon
-            photon.weight *= EXP_C(-C_MUA*free_path_length);
-    
             // scattering
             scatter_photon(&photon.dir, &state); // HG phase function
             ++photon.scat_counter;
-
-            // end photon if max number of scatterings exceeded or weight below threshold
-            if(photon.scat_counter >= N_SCAT_MAX || photon.weight < 1e-8f) 
-            {
-                reset_photon(&photon);
-                ++simulated_photons_pthread_d[thread_id];
-            }
+        }
+        
+        // end photon if max number of scatterings exceeded or weight below threshold
+        if(photon.scat_counter >= N_SCAT_MAX || photon.weight < 1e-8f) 
+        {
+            reset_photon(&photon);
+            ++simulated_photons_pthread_d[thread_id];
         }
     }
 
@@ -143,7 +154,7 @@ __kernel void finish(__global tyche_i_state* rng_states_d,
     for(int idx = 0; idx < N_COSTHETA*N_PHI; ++idx)
         detector_loc[idx] = 0.0f;
     
-    bool done = false;
+    bool was_reflected = false; 
     
     // Main photon loop
     while(true)
@@ -164,22 +175,38 @@ __kernel void finish(__global tyche_i_state* rng_states_d,
 
             // exit point of the photon
             photon.zpos = 0.0f;
-            
-            done = true;
+
+            // reflect later, call calc_rad_contribution only once
+            was_reflected = true;
         }
         
         // calculate contribution to radiance
+        barrier(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
         calc_rad_contribution(&photon, free_path_length, zpos_start, detector_loc, cost_points, phi_points);
-        
-        if(done)
-            break;
 
         // Attenuate photon
         photon.weight *= EXP_C(-C_MUA*free_path_length);
-
-        // scattering
-        scatter_photon(&photon.dir, &state); // HG phase function
-        ++photon.scat_counter;
+        
+        // reflection
+        if(was_reflected)
+        {   
+            // reflect photon
+            photon.dir.cost *= -1.0f;
+            
+            // reduce weight according to Fresnel
+            photon.weight *= calc_reflectivity(photon.dir.cost);
+            
+            // count interaction
+            ++photon.scat_counter;
+        
+            was_reflected = false;
+        }
+        else
+        {
+            // scattering
+            scatter_photon(&photon.dir, &state); // HG phase function
+            ++photon.scat_counter;
+        }
 
         // end photon if max number of scatterings exceeded or weight below threshold
         if(photon.scat_counter >= N_SCAT_MAX || photon.weight < 1e-8f) 

@@ -4,8 +4,6 @@ from tqdm import tqdm
 import os
 import matplotlib.pyplot as plt
 import time
-from netCDF4 import Dataset
-import socket
 
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
 print(os.path.dirname(os.path.realpath(__file__)))
@@ -53,6 +51,8 @@ class Hybrid:
         mua = parameters.mua
         g = parameters.g
         mut = mus + mua
+        n1 = parameters.n1
+        n2 = parameters.n2
 
         # Include dir for opencl code and set build defines
         self.ocl_cfg.add_path(os.path.join(self.cwd,"../opencl")) # ./opencl
@@ -68,6 +68,17 @@ class Hybrid:
             self.ocl_cfg.add_build_define("C_GF="+str(g)+'f')
 
         self.ocl_cfg.add_build_define("C_MUT="+str(mut)+'f')
+        
+        if(abs(n1-n2) > 1e-6): # refractive index mismatch
+        
+            self.ocl_cfg.add_build_define("C_N1="+str(n1)+'f') # n outside of medium
+            self.ocl_cfg.add_build_define("C_N2="+str(n2)+'f') # n inside of medium
+            
+            parameters.calc_start_dir() # calculate initial direction after refraction
+            parameters.calc_R_fresnel() # calculate intial weight accounting for reflections
+            
+            self.ocl_cfg.add_build_define("INIT_WEIGHT="+str(1-parameters.R)+'f') # intial weight considering Fresnel
+            self.ocl_cfg.add_build_define("INIT_COST="+str(parameters.cost_start)+'f') # intial cost direction considering refraction
         
         platform = cl.get_platforms()[self.cfg["opencl_config"]["platform"]]
         devices = [platform.get_devices()[device_id] for device_id in self.cfg["opencl_config"]["devices"]]

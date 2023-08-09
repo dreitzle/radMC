@@ -30,8 +30,41 @@ class Sim_Parameters:
         self.mua = cfg["sim_parameters"]["mua"]
         self.mus = cfg["sim_parameters"]["mus"] 
         self.g = cfg["sim_parameters"]["g"]
+        self.n1 = cfg["sim_parameters"]["n1"]
+        self.n2 = cfg["sim_parameters"]["n2"]
+        self.theta_ls = cfg["sim_parameters"]["theta_ls"]
+        
+    def calc_start_dir(self):
+        
+        """ 
+        Calculate initial direction after refraction.
+        """
+        
+        self.cost_start = np.cos(np.deg2rad(self.theta_ls))
+        
+        if (self.theta_ls > 0.000001): # light source is not perpendicular to surface
+            
+            n_ratio = self.n1/self.n2
+            
+            self.cost_start = self.cost_start*n_ratio - (n_ratio*self.cost_start - np.sqrt(1 - n_ratio*n_ratio*(1 - self.cost_start*self.cost_start)))
+            
+    def calc_R_fresnel(self):
+        
+        n = self.n2/self.n1
+        mu = self.cost_start
+        mu_crit = np.sqrt(n*n-1)/n if n > 1.0 else 0.0
+        
+        if (mu > mu_crit):
+        
+            mu0 = np.sqrt(1.0-n*n*(1.0-mu*mu))
+            f1 = (mu-n*mu0)/(mu+n*mu0)
+            f2 = (mu0-n*mu)/(mu0+n*mu)
+            self.R = 0.5*f1*f1+0.5*f2*f2
+        
+        else: self.R = 1 # total reflexion
 
-    
+        
+
 class Tyche_i_state(ctypes.Structure):
     
     _fields_ = [("a", ctypes.c_uint32),
