@@ -4,16 +4,16 @@
 #include <MC_planar_header.cl>
 #include <tyche_i.cl>
 #include <scattering_hg.cl>
-#include <reflection_transmission.cl>
+#include <fresnel.cl>
 #include <detector_integral.cl>
 //~ #include <detector_lf.cl>
 
 void reset_photon(Photon* photon)
 {
-    // start new photon: pencil beam perpendicular to surface
+    // start new photon: pencil beam
     photon->zpos = 0.0f;
     
-    // initial light source direction
+    // light source direction after refraction
     photon->dir.cost = INIT_COST;
     photon->dir.sint = SQRT_C(1.0f - INIT_COST*INIT_COST);
     photon->dir.cosp = 1.0f;
@@ -91,8 +91,7 @@ __kernel void run(__global tyche_i_state* rng_states_d,
         // Attenuate photon
         photon.weight *= EXP_C(-C_MUA*free_path_length);
         
-        // reflection
-        if(was_reflected)
+        if(was_reflected) // reflection
         {   
             // reflect photon
             photon.dir.cost *= -1.0f;
@@ -105,9 +104,8 @@ __kernel void run(__global tyche_i_state* rng_states_d,
         
             was_reflected = false;
         }
-        else
+        else // scattering
         {
-            // scattering
             scatter_photon(&photon.dir, &state); // HG phase function
             ++photon.scat_counter;
         }
@@ -181,14 +179,13 @@ __kernel void finish(__global tyche_i_state* rng_states_d,
         }
         
         // calculate contribution to radiance
-        barrier(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
+
         calc_rad_contribution(&photon, free_path_length, zpos_start, detector_loc, cost_points, phi_points);
 
         // Attenuate photon
         photon.weight *= EXP_C(-C_MUA*free_path_length);
         
-        // reflection
-        if(was_reflected)
+        if(was_reflected) // reflection
         {   
             // reflect photon
             photon.dir.cost *= -1.0f;
@@ -201,9 +198,8 @@ __kernel void finish(__global tyche_i_state* rng_states_d,
         
             was_reflected = false;
         }
-        else
+        else // scattering
         {
-            // scattering
             scatter_photon(&photon.dir, &state); // HG phase function
             ++photon.scat_counter;
         }
@@ -223,5 +219,4 @@ __kernel void finish(__global tyche_i_state* rng_states_d,
     // save local detector to global memory
     for(int idx = 0; idx < N_PHI*N_COSTHETA; ++idx)
        detector_d[idx + thread_id*N_PHI*N_COSTHETA] += detector_loc[idx];
-
 }

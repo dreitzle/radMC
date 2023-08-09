@@ -58,13 +58,13 @@ class Hybrid:
         self.ocl_cfg.add_path(os.path.join(self.cwd,"../opencl")) # ./opencl
         self.ocl_cfg.add_build_define("N_SCAT_PTHREAD="+str(self.cfg["mc_config"]["n_scat_pthread"]))
         self.ocl_cfg.add_build_define("N_SCAT_MAX="+str(self.cfg["mc_config"]["n_scat_max"]))# Max number of scat event per thread
-        self.ocl_cfg.add_build_define("N_PHI="+str(self.N_POINTS_PHI)) # Step size between points
-        self.ocl_cfg.add_build_define("N_COSTHETA="+str(self.N_POINTS_COSTHETA)) # Number of points for the radial detection
+        self.ocl_cfg.add_build_define("N_PHI="+str(self.N_POINTS_PHI)) # number of phi values
+        self.ocl_cfg.add_build_define("N_COSTHETA="+str(self.N_POINTS_COSTHETA)) # number of cost values
         
         self.ocl_cfg.add_build_define("C_MUS="+str(mus)+'f')
         self.ocl_cfg.add_build_define("C_MUA="+str(mua)+'f')
         
-        if(abs(g) > 1e-4):
+        if(abs(g) > 1e-4): # anisotropic scattering
             self.ocl_cfg.add_build_define("C_GF="+str(g)+'f')
 
         self.ocl_cfg.add_build_define("C_MUT="+str(mut)+'f')
