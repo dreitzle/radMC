@@ -1,6 +1,6 @@
 {
     "mc_config": {
-        "photons": 1e6,
+        "photons": 1e5,
         "n_scat_pthread": 100,
         "n_scat_max": 100000,
         "n_phi": 1,
