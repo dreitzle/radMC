@@ -14,6 +14,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # build options
 option(BUILD_TESTS "Building tests" ON)
+# Link tests dynamically
+add_definitions( -DBOOST_TEST_DYN_LINK )
+# absolute path to testing data
+add_definitions( -DDATA_PATH="${PROJECT_SOURCE_DIR}/tests/data/" )
+
 set( CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # configure compiler warnings
@@ -66,8 +71,6 @@ find_package( Boost 1.72.0 COMPONENTS filesystem unit_test_framework REQUIRED )
 set( BOOST_TEST_LIBS ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY} )
 
 find_package (NetCDF REQUIRED)
-#  target_link_libraries (uses_f90_interface ${NETCDF_LIBRARIES})
-#  target_link_libraries (only_uses_c_interface ${NETCDF_LIBRARIES_C})
 
 include_directories(SYSTEM ${PROJECT_SOURCE_DIR} ${CMAKE_BINARY_DIR} ${Boost_INCLUDE_DIRS} )
 
@@ -108,16 +111,20 @@ endif(OpenCL_FOUND)
 
 link_directories( ${Boost_LIBRARY_DIRS} )
 
-# Build netcdf_interface library
-add_library( ncinterface_mc SHARED "netcdf_interface_mc.cpp" )
-target_link_libraries( ncinterface_mc ${NETCDF_LIBRARIES_C} )
+add_library( radMC config.cpp clsim.cpp netcdf_interface_mc.cpp)
+target_link_libraries( radMC ${NETCDF_LIBRARIES_C} ${OpenCL_LIBRARIES} ${Boost_LIBRARIES})
 
 # build executables
-add_executable( radMC_planar config.cpp clsim.cpp radMC_planar.cpp )
-target_link_libraries( radMC_planar ncinterface_mc ${OpenCL_LIBRARIES} ${Boost_LIBRARIES} )
+add_executable( radMC_planar radMC_planar.cpp )
+target_link_libraries( radMC_planar radMC )
 
 if(BUILD_TESTS)
 
+add_executable( test_welford tests/test_welford.cpp )
+target_link_libraries( test_welford ${BOOST_TEST_LIBS} )
+add_test( Welford_algorithm test_welford )
 
+add_executable( test_convergence tests/test_convergence.cpp )
+target_link_libraries( test_convergence radMC )
 
 endif(BUILD_TESTS)

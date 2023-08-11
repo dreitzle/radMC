@@ -2,12 +2,12 @@
 #include <iostream>
 #include <fstream>
 #include <exception>
-#include "clext.h"
 #include <type_traits>
 #include <random>
 #include <chrono>
 #include <cmath>
 #include "netcdf_interface_mc.hpp"
+#include "clext.h"
 
 int CLsim::check_platform(const unsigned int platform_num, cl::Platform *_platform)
 {
@@ -150,6 +150,28 @@ CLsim::CLsim(cl::Platform &_platform, cl::Device &_device)
     init();
 }
 
+void CLsim::reset_build_opts()
+{
+    /* if sources were already built, delete programs */
+    cl_program_seed.reset();
+    cl_program_main.reset();
+
+    default_build_opts.clear();
+    default_build_opts.append("-I");
+    default_build_opts.append(CL_SOURCE_DIR);
+    default_build_opts.append(" -cl-single-precision-constant");
+    default_build_opts.append(" -cl-strict-aliasing");
+    default_build_opts.append(" -cl-mad-enable");
+    default_build_opts.append(" -cl-no-signed-zeros");
+}
+
+void CLsim::reset_build_opts(const char* add_opts)
+{
+    reset_build_opts();
+    default_build_opts.append(" ");
+    default_build_opts.append(add_opts);
+}
+
 void CLsim::init()
 {
     try
@@ -163,12 +185,7 @@ void CLsim::init()
         throw;
     }
 
-    default_build_opts.append("-I");
-    default_build_opts.append(CL_SOURCE_DIR);
-    default_build_opts.append(" -cl-single-precision-constant");
-    default_build_opts.append(" -cl-strict-aliasing");
-    default_build_opts.append(" -cl-mad-enable");
-    default_build_opts.append(" -cl-no-signed-zeros");
+    reset_build_opts();
 }
 
 std::string CLsim::read_src(std::string &path)
@@ -206,7 +223,8 @@ void CLsim::build_program(const std::string &file, const std::string &opts, std:
 
     err = program->build(device, opts.c_str());
 
-    if(clCheckError(err)){
+    if(clCheckError(err))
+    {
         std::string build_log;
         if(clCheckError(program->getBuildInfo(device, CL_PROGRAM_BUILD_LOG, &build_log)))
             throw std::runtime_error("Build failed and log could not be obtained.");
@@ -235,31 +253,40 @@ void CLsim::create_buffers(const Config &config)
     simulated_photons_pthread.resize(threads);
     std::fill(simulated_photons_pthread.begin(), simulated_photons_pthread.end(), 0ULL);
 
-    create_buffer(buffer_simulated_photons_pthread,CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-        vector_bytes(simulated_photons_pthread), simulated_photons_pthread.data());
+    create_buffer(buffer_simulated_photons_pthread,CL_MEM_READ_WRITE, vector_bytes(simulated_photons_pthread), nullptr);
+    write_buffer(buffer_simulated_photons_pthread, simulated_photons_pthread);
 
     create_buffer(buffer_photons, CL_MEM_READ_WRITE, threads*sizeof(Photon));
 
     detector.resize(n_costheta*n_phi*threads);
     std::fill(detector.begin(), detector.end(), 0.0F);
 
-    create_buffer(buffer_detector, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-        vector_bytes(detector), detector.data());
+    create_buffer(buffer_detector, CL_MEM_READ_WRITE, vector_bytes(detector), nullptr);
+    write_buffer(buffer_detector, detector);
 
     cost_points.resize(n_costheta);
     for(unsigned int i = 0; i < n_costheta; i++)
         cost_points[i] = (0.5f*std::cos((2.0f*i-1.0f)/(2.0f*n_costheta)*M_PI)-0.5f);
 
-    create_buffer(buffer_cost_points, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-        vector_bytes(cost_points), cost_points.data());
+    create_buffer(buffer_cost_points, CL_MEM_READ_ONLY, vector_bytes(cost_points), nullptr);
+    write_buffer(buffer_cost_points, cost_points);
 
     phi_points.resize(n_phi);
     const float phi_step = 2.0f*M_PI/n_phi;
     for(unsigned int i = 0; i < n_phi; i++)
         phi_points[i] = i*phi_step;
 
-    create_buffer(buffer_phi_points, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-        vector_bytes(phi_points), phi_points.data());
+    create_buffer(buffer_phi_points, CL_MEM_READ_ONLY, vector_bytes(phi_points), nullptr);
+    write_buffer(buffer_phi_points, phi_points);
+}
+
+void CLsim::reset()
+{
+    std::fill(simulated_photons_pthread.begin(), simulated_photons_pthread.end(), 0ULL);
+    write_buffer(buffer_simulated_photons_pthread, simulated_photons_pthread);
+        
+    std::fill(detector.begin(), detector.end(), 0.0F);
+    write_buffer(buffer_detector, detector);
 }
 
 void CLsim::seed_rng(const Config &config)
@@ -279,10 +306,12 @@ void CLsim::seed_rng(const Config &config)
         seeds[i] = dist(gen);
 
     cl_int err = 0;
-    cl::Buffer buffer_rng_seeds(*context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, vector_bytes(seeds), seeds.data(), &err);
-
+    cl::Buffer buffer_rng_seeds(*context, CL_MEM_READ_ONLY, vector_bytes(seeds), nullptr, &err);
+    
     if(clCheckError(err))
         throw std::runtime_error("RNG seed: copy seeds to device failed.");
+    
+    write_buffer(buffer_rng_seeds, seeds);
 
     cl::Kernel cl_kernel_seed(*cl_program_seed, "seeds_generator", &err);
 
@@ -306,7 +335,7 @@ void CLsim::seed_rng(const Config &config)
     std::cout << "RNG seeding successful." << std::endl;
 }
 
-void CLsim::run(const Config &config)
+void CLsim::run(const Config &config, double timer, bool pbar)
 {
     const unsigned int threads = config.ocl_config.threads;
     
@@ -405,41 +434,90 @@ void CLsim::run(const Config &config)
     const unsigned int det_length = n_costheta*n_phi;
 
     tq::progress_bar progress;
-    progress.update(0.0);
+
+    if(pbar)
+        progress.update(0.0);
 
     event.wait();
 
-    while(photons_done < n_photons)
+    if(timer <= 0.0)
     {
-        auto time_start_kernel = std::chrono::steady_clock::now();
-        photons_done_prev = photons_done;
+        /* No timer, count photons */
+        while(photons_done < n_photons)
+        {
+            auto time_start_kernel = std::chrono::steady_clock::now();
+            photons_done_prev = photons_done;
 
-        err = queue->enqueueNDRangeKernel(cl_kernel_sim_run, cl::NullRange, cl::NDRange(threads), cl::NDRange(64), NULL, &event);
-        if(clCheckError(err))
-            throw std::runtime_error("sim failed.");
-        event.wait();
+            err = queue->enqueueNDRangeKernel(cl_kernel_sim_run, cl::NullRange, cl::NDRange(threads), cl::NDRange(64), NULL, &event);
+            if(clCheckError(err))
+                throw std::runtime_error("sim failed.");
+            event.wait();
 
-        err = queue->enqueueReadBuffer(*buffer_simulated_photons_pthread, CL_TRUE, 0, vector_bytes(simulated_photons_pthread),
-            simulated_photons_pthread.data(), nullptr, &event);
-        if(clCheckError(err))
-            throw std::runtime_error("sim failed.");
-        event.wait();
+            err = queue->enqueueReadBuffer(*buffer_simulated_photons_pthread, CL_TRUE, 0, vector_bytes(simulated_photons_pthread),
+                simulated_photons_pthread.data(), nullptr, &event);
+            if(clCheckError(err))
+                throw std::runtime_error("sim failed.");
+            event.wait();
 
-        photons_done = std::reduce(simulated_photons_pthread.begin(), simulated_photons_pthread.end());
+            photons_done = std::reduce(simulated_photons_pthread.begin(), simulated_photons_pthread.end());
 
-        auto runtime_kernel = tq::elapsed_seconds(time_start_kernel,std::chrono::steady_clock::now());
-        double speed_kernel = (double)(photons_done-photons_done_prev) / runtime_kernel;
+            auto runtime_kernel = tq::elapsed_seconds(time_start_kernel,std::chrono::steady_clock::now());
+            double speed_kernel = (double)(photons_done-photons_done_prev) / runtime_kernel;
 
-        progress << speed_kernel << " Photons/s";
-        progress.update((double)photons_done/(double)n_photons);
+            if(pbar)
+            {
+                progress << speed_kernel << " Photons/s";
+                progress.update((double)photons_done/(double)n_photons);
+            }
+        }
     }
-    std::cerr << std::endl;
+    else
+    {
+        /* Timer set, run for specified time */
+        auto time_start_run = std::chrono::steady_clock::now();
+        auto time_end_kernel = time_start_run;
+
+        while(tq::elapsed_seconds(time_start_run,time_end_kernel) < timer)
+        {
+            auto time_start_kernel = std::chrono::steady_clock::now();
+            photons_done_prev = photons_done;
+
+            err = queue->enqueueNDRangeKernel(cl_kernel_sim_run, cl::NullRange, cl::NDRange(threads), cl::NDRange(64), NULL, &event);
+            if(clCheckError(err))
+                throw std::runtime_error("sim failed.");
+            event.wait();
+
+            err = queue->enqueueReadBuffer(*buffer_simulated_photons_pthread, CL_TRUE, 0, vector_bytes(simulated_photons_pthread),
+                simulated_photons_pthread.data(), nullptr, &event);
+            if(clCheckError(err))
+                throw std::runtime_error("sim failed.");
+            event.wait();
+
+            photons_done = std::reduce(simulated_photons_pthread.begin(), simulated_photons_pthread.end());
+
+            time_end_kernel = std::chrono::steady_clock::now();
+            auto runtime_kernel = tq::elapsed_seconds(time_start_kernel,time_end_kernel);
+            double speed_kernel = (double)(photons_done-photons_done_prev) / runtime_kernel;
+
+            if(pbar)
+            {
+                progress << speed_kernel << " Photons/s";
+                progress.update((double)(tq::elapsed_seconds(time_start_run,std::chrono::steady_clock::now()) / timer));
+            }
+        }
+    }
+
+    if(pbar)
+        std::cerr << std::endl;
 
     /* Finish remaining photons */
     err = queue->enqueueNDRangeKernel(cl_kernel_sim_finish, cl::NullRange, cl::NDRange(threads), cl::NDRange(64), NULL, &event);
     if(clCheckError(err))
         throw std::runtime_error("sim finish failed.");
-    std::cout << "Finishing last photons." << std::endl;
+
+    if(pbar)
+        std::cout << "Finishing last photons." << std::endl;
+
     event.wait();
 
     err = queue->enqueueReadBuffer(*buffer_simulated_photons_pthread, CL_TRUE, 0, vector_bytes(simulated_photons_pthread),
@@ -449,6 +527,8 @@ void CLsim::run(const Config &config)
     event.wait();
 
     photons_done = std::reduce(simulated_photons_pthread.begin(), simulated_photons_pthread.end());
+
+    queue->finish();
 
     /* Read detector data */
     err = queue->enqueueReadBuffer(*buffer_detector, CL_TRUE, 0, vector_bytes(detector), detector.data(), nullptr, &event);
@@ -488,4 +568,14 @@ void CLsim::write_nc(const std::string &filename)
     ncfile.put_variable("radiance",detector_sum.data());
 
     ncfile.close_file();
+}
+
+const std::vector<double>& CLsim::get_result() const
+{
+    return detector_sum;
+}
+
+std::pair<std::vector<cl_float>, std::vector<cl_float>> CLsim::get_points() const
+{
+    return std::make_pair(cost_points,phi_points);
 }

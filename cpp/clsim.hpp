@@ -20,6 +20,10 @@
 #include <memory>
 #include "boost/lexical_cast.hpp"
 
+/* clext.h forward */
+const char* clGetErrorString(int errorCode);
+int clCheckError(int errorCode);
+
 /* OpenCL structs */
 
 typedef struct tyche_i_state{
@@ -42,6 +46,7 @@ typedef struct Photon{
 class CLsim
 {
     private:
+
         cl::Platform platform;
         cl::Device device;
 
@@ -55,7 +60,8 @@ class CLsim
     protected:
 
         /* convert values to string literals. Needed to pass parameters to OpenCL kernels as defines */
-        template<typename T> std::string to_literal(T value)
+        template<typename T>
+        std::string to_literal(T value)
         {
             std::string str = boost::lexical_cast<std::string>(value);
             if constexpr(std::is_same_v<std::remove_cv_t<std::remove_reference_t<T>>, float>)
@@ -76,7 +82,8 @@ class CLsim
         }
 
         /* get size of vector data in bytes */
-        template<typename T> inline size_t vector_bytes(const std::vector<T> &vec)
+        template<typename T>
+        inline size_t vector_bytes(const std::vector<T> &vec) const
             { return vec.size()*sizeof(T); }
 
         /* Append define to string */
@@ -86,7 +93,8 @@ class CLsim
             str.append(name);
         }
         /* Append define with value to string*/
-        template<typename T> void add_define(std::string &str, const char *name, T value)
+        template<typename T>
+        void add_define(std::string &str, const char *name, T value)
         {
             str.append(" -D");
             str.append(name);
@@ -121,7 +129,32 @@ class CLsim
         void build_program(const std::string &file, const std::string &opts, std::unique_ptr<cl::Program> &program);
         void create_buffer(std::unique_ptr<cl::Buffer> &buffer, cl_mem_flags flags, size_t size, void *hostmem = nullptr);
 
+        template<typename T>
+        void write_buffer(const std::unique_ptr<cl::Buffer> &buffer, const std::vector<T> &vec) const
+        {
+            cl_int err = 0;
+            cl::Event event;
+
+            err = queue->enqueueWriteBuffer(*buffer, true, 0U, vector_bytes(vec), vec.data(), nullptr, &event);
+            if(clCheckError(err))
+                throw std::runtime_error("Write to device failed.");
+            event.wait();
+        }
+
+        template<typename T>
+        void write_buffer(const cl::Buffer &buffer, const std::vector<T> &vec) const
+        {
+            cl_int err = 0;
+            cl::Event event;
+
+            err = queue->enqueueWriteBuffer(buffer, true, 0U, vector_bytes(vec), vec.data(), nullptr, &event);
+            if(clCheckError(err))
+                throw std::runtime_error("Write to device failed.");
+            event.wait();
+        }
+
     public:
+
         /* Check for platform and device */
         static int check_platform(const unsigned int platform_num, cl::Platform *_platform = NULL);
         static int check_device(cl::Platform &_platform, const unsigned int device_num, cl::Device *_device = NULL);
@@ -130,12 +163,19 @@ class CLsim
         CLsim(const unsigned int platform_num, const unsigned int device_num);
         CLsim(cl::Platform &_platform, cl::Device &_device);
 
+        /* reset build options */
+        void reset_build_opts();
+        void reset_build_opts(const char* add_opts);
+
         /* Sim */
         void create_buffers(const Config &config);
         void seed_rng(const Config &config);
-        void run(const Config &config);
+        void run(const Config &config, double timer = 0.0, bool pbar = true);
+        void reset();
 
         /* Output */
+        std::pair<std::vector<cl_float>, std::vector<cl_float>> get_points() const; 
+        const std::vector<double>& get_result() const;
         void write_nc(const std::string &filename);
 };
 

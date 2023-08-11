@@ -1,0 +1,21 @@
+{
+    "mc_config": {
+        "photons": "100000",
+        "n_scat_pthread": "20",
+        "n_scat_max": "10000000",
+        "n_costheta": "48",
+        "n_phi": "1"
+    },
+    "opencl_config": {
+        "platform": "0",
+        "devices": [
+            "0"
+        ],
+        "threads": "9216"
+    },
+    "sim_parameters": {
+        "mus": "5.0",
+        "mua": "0.01",
+        "g": "0.8"
+    }
+}
