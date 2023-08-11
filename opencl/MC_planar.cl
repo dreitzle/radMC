@@ -4,8 +4,12 @@
 #include <MC_planar_header.cl>
 #include <tyche_i.cl>
 #include <scattering_hg.cl>
-#include <detector_integral.cl>
-//~ #include <detector_lf.cl>
+
+#ifdef USE_LF
+    #include <detector_lf.cl>
+#else
+    #include <detector_integral.cl>
+#endif
 
 void reset_photon(Photon* photon)
 {
