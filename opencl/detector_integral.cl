@@ -17,7 +17,12 @@ void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
     for(int cost_point_idx = 0; cost_point_idx < N_COSTHETA; ++cost_point_idx)
     {
         float cost_point = cost_points[cost_point_idx];
-        float sint_point = sqrt(1.0f-cost_point*cost_point);
+        float sint_point;
+
+        if(fabs(cost_point) < 1e-2f)
+            sint_point = 1.0f-0.5f*cost_point*cost_point;
+        else
+            sint_point = sqrt(1.0f-cost_point*cost_point);
 
         for(int phi_point_idx = 0; phi_point_idx < N_PHI; ++phi_point_idx)
         {
@@ -33,9 +38,19 @@ void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
             
             if(fabs(den) < 1e-4f)
             {
-                float dexp = EXP_C(C_MUT/cost_point*z1);
-                float lm = DIVIDE_C(l_path,cost_point);
-                contribution = dexp*lm*(1.0f-lm*den*(0.5f+lm*DIVIDE_C(den,6.0f)));
+                // try to avoid rounding errors
+                den = C_MUA - C_MUT*DIVIDE_C(cost,cost_point);
+                if(fabs(den) < 1e-4f)
+                {
+                    // still too small, use expansion
+                    float dexp = DIVIDE_C(EXP_C(DIVIDE_C(C_MUT,cost_point)*z1),cost_point);
+                    contribution = dexp*l_path*(1.0f-l_path*den*(0.5f+l_path*DIVIDE_C(den,6.0f)));
+                }
+                else
+                {
+                    float dexp = EXP_C(DIVIDE_C(C_MUT,cost_point)*z1) - EXP_C(-C_MUA*l_path+DIVIDE_C(C_MUT,cost_point)*photon->zpos);
+                    contribution = DIVIDE_C(dexp,den*cost_point);
+                }
             }
             else
             {
