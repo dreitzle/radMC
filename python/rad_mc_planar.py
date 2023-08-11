@@ -1,13 +1,15 @@
-# %%
-from seeds import Seeds
-from structs import Photons, Sim_Parameters
-from config_loader import config, ocl_config
+# imports
 import os
 import time
 import pyopencl as cl
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+
+# custom imports
+from seeds import Seeds
+from structs import Photons, Sim_Parameters
+from config_loader import config, ocl_config
 
 # set cwd to file location
 os.chdir(os.path.dirname(os.path.realpath(__file__)))
@@ -16,46 +18,48 @@ print(f"Changing directory: {os.path.dirname(os.path.realpath(__file__))}")
 
 class Hybrid:
 
+    """
+    Calculate radiance for a semi infinite medium
+    or a slab using a conventional last flight method
+    or an integral last flight implementation.
+    """
+
     def __init__(self, config_path: str = "config.json"):
 
         self.cwd = os.path.dirname(os.path.realpath(__file__))
         # self.cwd = "/home/dhevisov/development/radMC/python"
+
         # load config
         self.cfg = config(config_path).data
 
-        # Load the OpenCL kernel code and initialize config
-        with open(os.path.join(self.cwd, "../opencl", "MC_planar.cl"), 'r') as file:
-            self.kernel_code = file.read()
-
         self.ocl_cfg = ocl_config()
 
-    def run(self):
-
         # read number of threads
-        self.N_threads = self.cfg["opencl_config"]["threads"]
+        self.n_threads = self.cfg["opencl_config"]["threads"]
 
         # set MC parameters
-        self.N_photons = self.cfg["mc_config"]["photons"]
+        self.n_photons = self.cfg["mc_config"]["photons"]
 
         # use Chebyshev nodes for cost
-        self.N_POINTS_COSTHETA = test.cfg["mc_config"]["n_costheta"]
-        cost_point_idx = np.arange(self.N_POINTS_COSTHETA)+1
+        self.n_points_costheta = self.cfg["mc_config"]["n_costheta"]
+        cost_point_idx = np.arange(self.n_points_costheta)+1
         self.cost_points = (0.5*np.cos((2*cost_point_idx-1) /
-                            (2*self.N_POINTS_COSTHETA)*np.pi)-0.5).astype(np.float32)
+                            (2*self.n_points_costheta)*np.pi)-0.5).astype(np.float32)
 
         # Linear phi sampling
-        self.N_POINTS_PHI = test.cfg["mc_config"]["n_phi"]
+        self.n_points_phi = self.cfg["mc_config"]["n_phi"]
         self.phi_points = np.linspace(
-            0, 2*np.pi, self.N_POINTS_PHI, endpoint=False, dtype=np.float32)
+            0, 2*np.pi, self.n_points_phi, endpoint=False, dtype=np.float32)
 
         # load optical properties
         parameters = Sim_Parameters(self.cfg)
         mus = parameters.mus
         mua = parameters.mua
-        g = parameters.g
+        g_factor = parameters.g_factor
         mut = mus + mua
-        n1 = parameters.n1
-        n2 = parameters.n2
+        n_1 = parameters.n_1
+        n_2 = parameters.n_2
+        d_slab = parameters.d_slab
 
         # Include dir for opencl code and set build defines
         self.ocl_cfg.add_path(os.path.join(self.cwd, "../opencl"))  # ./opencl
@@ -65,24 +69,24 @@ class Hybrid:
         self.ocl_cfg.add_build_define(
             f'N_SCAT_MAX={self.cfg["mc_config"]["n_scat_max"]}')
         self.ocl_cfg.add_build_define(
-            f'N_PHI={self.N_POINTS_PHI}')  # number of phi values
+            f'N_PHI={self.n_points_phi}')  # number of phi values
         self.ocl_cfg.add_build_define(
-            f'N_COSTHETA={self.N_POINTS_COSTHETA}')  # number of cost values
+            f'N_COSTHETA={self.n_points_costheta}')  # number of cost values
 
         self.ocl_cfg.add_build_define(f'C_MUS={mus}f')
         self.ocl_cfg.add_build_define(f'C_MUA={mua}f')
 
-        if abs(g) > 1e-4:  # anisotropic scattering
-            self.ocl_cfg.add_build_define(f'C_GF={g}f')
+        if abs(g_factor) > 1e-4:  # anisotropic scattering
+            self.ocl_cfg.add_build_define(f'C_GF={g_factor}f')
 
         self.ocl_cfg.add_build_define(f'C_MUT={mut}f')
 
-        if abs(n1-n2) > 1e-6:  # refractive index mismatch
+        if abs(n_1-n_2) > 1e-6:  # refractive index mismatch
 
             self.ocl_cfg.add_build_define(
-                f'C_N1={n1}f')  # n outside of medium
+                f'C_N1={n_1}f')  # n outside of medium
             self.ocl_cfg.add_build_define(
-                f'C_N2={n2}f')  # n inside of medium
+                f'C_N2={n_2}f')  # n inside of medium
 
             # calculate initial direction after refraction
             parameters.calc_start_dir()
@@ -96,6 +100,23 @@ class Hybrid:
             self.ocl_cfg.add_build_define(
                 f'INIT_COST={parameters.cost_start}f')
 
+        if d_slab > 0:  # Kernel for slab
+
+            self.ocl_cfg.add_build_define(
+                f'D_SLAB={d_slab}f')
+
+            # Load the OpenCL kernel code and initialize config
+            with open(os.path.join(self.cwd, "../opencl", "MC_slab.cl"), 'r') as file:
+                self.kernel_code = file.read()
+
+        # else:  # Kernel for semi infinite medium
+
+        #     # Load the OpenCL kernel code and initialize config
+        #     with open(os.path.join(self.cwd, "../opencl", "MC_planar.cl"), 'r') as file:
+        #         self.kernel_code = file.read()
+
+    def run(self):
+
         platform = cl.get_platforms()[self.cfg["opencl_config"]["platform"]]
         devices = [platform.get_devices()[device_id]
                    for device_id in self.cfg["opencl_config"]["devices"]]
@@ -108,15 +129,15 @@ class Hybrid:
 
         # Prepare input data
         # Count simulated photons per thread
-        simulated_photons_pthread = np.zeros(self.N_threads, dtype=np.uint64)
-        self.photons = Photons(self.N_threads).photons  # photons struct
+        simulated_photons_pthread = np.zeros(self.n_threads, dtype=np.uint64)
+        self.photons = Photons(self.n_threads).photons  # photons struct
 
         # initialize detector: each thread has its own local detector
         self.detector = np.zeros(self.cfg["mc_config"]["n_costheta"] *
-                                 self.cfg["mc_config"]["n_phi"]*self.N_threads, dtype=np.float32)
+                                 self.cfg["mc_config"]["n_phi"]*self.n_threads, dtype=np.float32)
 
         # calculate RNG (tyche_i) states in a seperate kernel and create buffer
-        rng_states = Seeds(self.N_threads, self.cwd).states
+        rng_states = Seeds(self.n_threads, self.cwd).states
         rng_states_buffers = [cl.Buffer(context, cl.mem_flags.READ_WRITE |
                                         cl.mem_flags.COPY_HOST_PTR, hostbuf=rng_states) for context in contexts]
 
@@ -136,7 +157,7 @@ class Hybrid:
         kernel_init = programs[0].init_photons
         kernel_init.set_args(buffers_2[0])
         gpu_init = cl.enqueue_nd_range_kernel(
-            queues[0], kernel_init, (self.N_threads,), (64,))  # Enqeue kernel for execution
+            queues[0], kernel_init, (self.n_threads,), (64,))  # Enqeue kernel for execution
         gpu_init.wait()  # Wait for the calculation to finish
 
         # Create kernel and set kernel args
@@ -149,16 +170,16 @@ class Hybrid:
         # initialize progress bar
         simulated_photons_per_run = 0  # photon counter per GPU run
         simulated_photons_temp = 0  # save last GPU run
-        pbar = tqdm(total=self.N_photons,
+        pbar = tqdm(total=self.n_photons,
                     desc="Running Monte Carlo simulation", unit="photons")
 
         start_timer = time.time()  # time MC simulation
 
         # run simulation
-        while self.simulated_photons < self.N_photons:  # simulate atleast N photons
+        while self.simulated_photons < self.n_photons:  # simulate atleast N photons
 
             gpu_sim = cl.enqueue_nd_range_kernel(
-                queues[0], kernel, (self.N_threads,), (64,))  # Enqeue kernel for execution
+                queues[0], kernel, (self.n_threads,), (64,))  # Enqeue kernel for execution
             gpu_sim.wait()  # Wait for the calculation to finish
 
             # read photon counting buffer
@@ -183,7 +204,7 @@ class Hybrid:
         print("Finishing last photons... ", end="")
 
         gpu_sim = cl.enqueue_nd_range_kernel(
-            queues[0], kernel_f, (self.N_threads,), (64,))  # Enqeue kernel for execution
+            queues[0], kernel_f, (self.n_threads,), (64,))  # Enqeue kernel for execution
         gpu_sim.wait()  # Wait for the calculation to finish
 
         print("Done!")
@@ -196,7 +217,7 @@ class Hybrid:
 
         cl.enqueue_copy(queues[0], self.detector, buffers_3[0])
         self.detector_loc = np.reshape(
-            self.detector, (self.N_threads, self.cfg["mc_config"]["n_costheta"], self.cfg["mc_config"]["n_phi"]))
+            self.detector, (self.n_threads, self.cfg["mc_config"]["n_costheta"], self.cfg["mc_config"]["n_phi"]))
         self.detector = np.sum(self.detector_loc, axis=0)  # sum over threads
 
         cl.enqueue_copy(queues[0], self.photons, buffers_2[0])

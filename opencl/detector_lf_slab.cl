@@ -3,12 +3,13 @@
 
 #include <MC_planar_header.cl>
 #include <tyche_i.cl>
+#include <fresnel.cl>
 
 void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
                            float* detector_loc, __constant float* cost_points,
                            __constant float* phi_points)
 {
-    if(photon->zpos <= 0.0f)
+    if(photon->zpos <= 0.0f || photon->zpos >= D_SLAB)
         return;
 
     // calc contribution to radiance
@@ -22,6 +23,9 @@ void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
         float cost_point = cost_points[cost_point_idx];
         float sint_point = SQRT_C(1.0f-cost_point*cost_point);
 
+        float r0 = calc_reflectivity(cost_point);
+        float atten = EXP_C(DIVIDE_C(-C_MUT*D_SLAB,fabs(cost_point)));
+        
         for(int phi_point_idx = 0; phi_point_idx < N_PHI; ++phi_point_idx)
         {
             float cosp_point;
@@ -31,9 +35,11 @@ void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
             float pf = phase_function(scal_prod);
 
             float step_to_surface = -DIVIDE_C(photon->zpos,cost_point);
-            float photon_weight = photon->weight*EXP_C(-C_MUT*step_to_surface-C_MUA*l_path);
+            float photon_weight = photon->weight*EXP_C(-C_MUT*step_to_surface-C_MUA*l_path)*pf;
 
-           detector_loc[phi_point_idx + cost_point_idx*N_PHI] += DIVIDE_C(pf*photon_weight,fabs(cost_point)); 
+            float r_contribution = DIVIDE_C(1.0f, 1.0f - r0*r0*atten*atten);
+            
+           detector_loc[phi_point_idx + cost_point_idx*N_PHI] += DIVIDE_C(photon_weight*r_contribution,fabs(cost_point)); 
         }
     }
 }

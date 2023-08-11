@@ -37,7 +37,8 @@ class config:
                                 "g": 0.8,
                                 "n1": 1.0,
                                 "n2": 1.4,
-                                "theta_ls": 0
+                                "theta_ls": 0,
+                                "d_slab": 10
                             }
                         }
 

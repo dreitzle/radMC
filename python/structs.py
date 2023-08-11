@@ -30,10 +30,11 @@ class Sim_Parameters:
 
         self.mua = cfg["sim_parameters"]["mua"]
         self.mus = cfg["sim_parameters"]["mus"]
-        self.g = cfg["sim_parameters"]["g"]
-        self.n1 = cfg["sim_parameters"]["n1"]
-        self.n2 = cfg["sim_parameters"]["n2"]
+        self.g_factor = cfg["sim_parameters"]["g"]
+        self.n_1 = cfg["sim_parameters"]["n1"]
+        self.n_2 = cfg["sim_parameters"]["n2"]
         self.theta_ls = cfg["sim_parameters"]["theta_ls"]
+        self.d_slab = cfg["sim_parameters"]["d_slab"]
 
     def calc_start_dir(self):
         """
@@ -44,13 +45,13 @@ class Sim_Parameters:
 
         if (self.theta_ls > 0.000001):  # light source is not perpendicular to surface
 
-            n_ratio = self.n1/self.n2
+            n_ratio = self.n_1/self.n_2
 
             self.cost_start = self.cost_start*n_ratio - (n_ratio*self.cost_start - np.sqrt(1 - n_ratio*n_ratio*(1 - self.cost_start*self.cost_start)))
 
     def calc_R_fresnel(self):
 
-        n = self.n2/self.n1
+        n = self.n_2/self.n_1
         mu = self.cost_start
         mu_crit = np.sqrt(n*n-1)/n if n > 1.0 else 0.0
 
