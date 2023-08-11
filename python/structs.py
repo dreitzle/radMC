@@ -8,7 +8,7 @@ Created on Sat Jun 17 17:56:14 2023
 import numpy as np
 import ctypes
 
-class Photons:   
+class Photons:
 
     def __init__(self, N_threads):
 
@@ -22,20 +22,19 @@ class Photons:
         ])
 
         self.photons = np.zeros(N_threads, dtype=photon_type)
-        
-class Sim_Parameters:
-    
-    def __init__(self,cfg):
-        
-        self.mua = cfg["sim_parameters"]["mua"]
-        self.mus = cfg["sim_parameters"]["mus"] 
-        self.g = cfg["sim_parameters"]["g"]
 
-    
+class Sim_Parameters:
+
+    def __init__(self,cfg):
+
+        self.mua = float(cfg["sim_parameters"]["mua"])
+        self.mus = float(cfg["sim_parameters"]["mus"])
+        self.g = float(cfg["sim_parameters"]["g"])
+
 class Tyche_i_state(ctypes.Structure):
-    
+
     _fields_ = [("a", ctypes.c_uint32),
                 ("b", ctypes.c_uint32),
                 ("c", ctypes.c_uint32),
                 ("d", ctypes.c_uint32)]
-    
+
