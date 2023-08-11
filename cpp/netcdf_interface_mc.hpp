@@ -126,7 +126,7 @@ public:
 inline void netcdf_interface::checkErr(const int err, const char * name) const
 {
     if (err != NC_NOERR) {
-        std::cerr << "ERROR: " << name  << " (" << err << ")" << std::endl;
+        std::cerr << "ERROR: " << name  << " (" << nc_strerror(err) << ")" << std::endl;
         nc_close(nc_id);
         exit(EXIT_FAILURE);
     }

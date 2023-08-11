@@ -141,7 +141,7 @@ int netcdf_interface::def_variable(const std::string & name, nc_type xtype ,int 
 
 void netcdf_interface::enddef()
 {
-    checkErr(nc_enddef(nc_id),"nc_eddef");
+    checkErr(nc_enddef(nc_id),"nc_enddef");
 }
 
 int netcdf_interface::put_variable(const std::string & name, const void * data)
