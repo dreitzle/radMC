@@ -1,6 +1,6 @@
 {
     "mc_config": {
-        "photons": 1e6,
+        "photons": 1e7,
         "n_scat_pthread": 100,
         "n_scat_max": 100000,
         "n_phi": 1,
@@ -14,12 +14,12 @@
         "threads": 4096
     },
     "sim_parameters": {
-        "mua": 0.01,
-        "mus": 5.0,
+        "mua": 0.1,
+        "mus": 2.5,
         "g": 0.8,
         "n1": 1.0,
         "n2": 1.4,
         "theta_ls": 0,
-        "d_slab": 1000.0
+        "d_slab": 0.5
     }
 }

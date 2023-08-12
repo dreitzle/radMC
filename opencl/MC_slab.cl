@@ -5,7 +5,7 @@
 #include <tyche_i.cl>
 #include <scattering_hg.cl>
 #include <fresnel.cl>
-// #include <detector_integral.cl>
+// #include <detector_integral_slab.cl>
 #include <detector_lf_slab.cl>
 
 void reset_photon(Photon* photon)
@@ -37,7 +37,8 @@ __kernel void init_photons(__global Photon* photons_d)
 __kernel void run(__global tyche_i_state* rng_states_d,
                   __global unsigned long* simulated_photons_pthread_d, 
                   __global Photon* photons_d, 
-                  __global float* detector_d,
+                  __global float* detector_r_d,
+                  __global float* detector_t_d,
                   __constant float* cost_points,
                   __constant float* phi_points)
 {
@@ -51,11 +52,15 @@ __kernel void run(__global tyche_i_state* rng_states_d,
     Photon photon = photons_d[thread_id];
 
     // initialize local detector
-    float detector_loc[N_COSTHETA*N_PHI];
+    float detector_loc_r[N_COSTHETA*N_PHI];
+    float detector_loc_t[N_COSTHETA*N_PHI];
 
     for(int idx = 0; idx < N_COSTHETA*N_PHI; ++idx)
-        detector_loc[idx] = 0.0f;
-
+    {
+        detector_loc_r[idx] = 0.0f;
+        detector_loc_t[idx] = 0.0f;
+    }
+        
     bool was_reflected = false; 
 
     // Main photon loop
@@ -98,7 +103,7 @@ __kernel void run(__global tyche_i_state* rng_states_d,
 
         // calculate contribution to radiance
         barrier(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
-        calc_rad_contribution(&photon, free_path_length, zpos_start, detector_loc, cost_points, phi_points);
+        calc_rad_contribution(&photon, free_path_length, zpos_start, detector_loc_r, detector_loc_t, cost_points, phi_points);
 
         // Attenuate photon
         photon.weight *= EXP_C(-C_MUA*free_path_length);
@@ -138,14 +143,17 @@ __kernel void run(__global tyche_i_state* rng_states_d,
 
     // save local detector to global memory
     for(int idx = 0; idx < N_PHI*N_COSTHETA; ++idx)
-        detector_d[idx + thread_id*N_PHI*N_COSTHETA] += detector_loc[idx];
-
+    {
+        detector_r_d[idx + thread_id*N_PHI*N_COSTHETA] += detector_loc_r[idx];
+        detector_t_d[idx + thread_id*N_PHI*N_COSTHETA] += detector_loc_t[idx];
+    }
 }
 
 __kernel void finish(__global tyche_i_state* rng_states_d,
                      __global unsigned long* simulated_photons_pthread_d, 
                      __global Photon* photons_d, 
-                     __global float* detector_d,
+                     __global float* detector_r_d,
+                     __global float* detector_t_d,
                      __constant float* cost_points,
                      __constant float* phi_points)
 {
@@ -159,11 +167,15 @@ __kernel void finish(__global tyche_i_state* rng_states_d,
     Photon photon = photons_d[thread_id];
 
     // initialize local detector
-    float detector_loc[N_COSTHETA*N_PHI];
+    float detector_loc_r[N_COSTHETA*N_PHI];
+    float detector_loc_t[N_COSTHETA*N_PHI];
 
     for(int idx = 0; idx < N_COSTHETA*N_PHI; ++idx)
-        detector_loc[idx] = 0.0f;
-
+    {
+        detector_loc_r[idx] = 0.0f;
+        detector_loc_t[idx] = 0.0f;
+    }
+    
     bool was_reflected = false; 
 
     // Main photon loop
@@ -190,9 +202,21 @@ __kernel void finish(__global tyche_i_state* rng_states_d,
             was_reflected = true;
         }
 
+        if (photon.zpos >= D_SLAB)
+        {
+            // distance to surface along photon direction
+            free_path_length = DIVIDE_C(D_SLAB-zpos_start,photon.dir.cost);
+
+            // exit point of the photon
+            photon.zpos = D_SLAB;
+
+            // reflect later, call calc_rad_contribution only once
+            was_reflected = true;
+        }
+
         // calculate contribution to radiance
 
-        calc_rad_contribution(&photon, free_path_length, zpos_start, detector_loc, cost_points, phi_points);
+        calc_rad_contribution(&photon, free_path_length, zpos_start, detector_loc_r, detector_loc_t, cost_points, phi_points);
 
         // Attenuate photon
         photon.weight *= EXP_C(-C_MUA*free_path_length);
@@ -230,5 +254,9 @@ __kernel void finish(__global tyche_i_state* rng_states_d,
 
     // save local detector to global memory
     for(int idx = 0; idx < N_PHI*N_COSTHETA; ++idx)
-       detector_d[idx + thread_id*N_PHI*N_COSTHETA] += detector_loc[idx];
+    {
+        detector_r_d[idx + thread_id*N_PHI*N_COSTHETA] += detector_loc_r[idx];
+        detector_t_d[idx + thread_id*N_PHI*N_COSTHETA] += detector_loc_t[idx];
+    }
 }
+
