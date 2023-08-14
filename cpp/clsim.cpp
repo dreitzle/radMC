@@ -354,6 +354,17 @@ void CLsim::run(const Config &config, double timer, bool pbar)
     if(config.sim_parameters.g > 1e-4)
         add_define(build_opts, "C_GF", config.sim_parameters.g);
 
+    if(fabs(config.sim_parameters.n1 - config.sim_parameters.n2) > 1e-6)
+    {
+        add_define(build_opts, "C_N1", config.sim_parameters.n1);
+        add_define(build_opts, "C_N2", config.sim_parameters.n2);
+        add_define(build_opts, "INIT_WEIGHT", config.sim_parameters.get_init_weight());
+    }
+    else
+        add_define(build_opts, "INIT_WEIGHT", 1.0);
+
+    add_define(build_opts, "INIT_COST", config.sim_parameters.get_init_cost());
+
     /* Setup kernels */
     if(!cl_program_main)
         build_program(CL_SIM_SRC, build_opts, cl_program_main);

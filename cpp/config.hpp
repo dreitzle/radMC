@@ -26,8 +26,14 @@ typedef struct OCl_Config {
 /* Simulation parameters */
 typedef struct Sim_Parameter_Config {
     float mua = 0.1;
-    float mus = 0.1;
-    float g = 0.0;
+    float mus = 2.5;
+    float g = 0.8;
+    float n1 = 1.0;
+    float n2 = 1.4;
+    float theta_ls = 0.0;
+    float d_slab = 1.0;
+    float get_init_weight() const;
+    float get_init_cost() const;
 } Sim_Parameter_Config;
 
 class Config
