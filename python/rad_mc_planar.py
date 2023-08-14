@@ -27,7 +27,6 @@ class Hybrid:
     def __init__(self, config_path: str = "config.json"):
 
         self.cwd = os.path.dirname(os.path.realpath(__file__))
-        # self.cwd = "/home/dhevisov/development/radMC/python"
 
         # load config
         self.cfg = config(config_path).data
