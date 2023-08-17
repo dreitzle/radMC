@@ -32,33 +32,23 @@ void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
             float scal_prod = sint*sint_point*(cosp*cosp_point+sinp*sinp_point)+cost*cost_point; 
             float pf = phase_function(scal_prod);
 
-            float den = C_MUA*cost_point - C_MUT*cost;
+            float den = C_MUA - C_MUT*DIVIDE_C(cost,cost_point);
 
-            float contribution;
+            float X;
             
             if(fabs(den) < 1e-4f)
             {
-                // try to avoid rounding errors
-                den = C_MUA - C_MUT*DIVIDE_C(cost,cost_point);
-                if(fabs(den) < 1e-4f)
-                {
-                    // still too small, use expansion
-                    float dexp = DIVIDE_C(EXP_C(DIVIDE_C(C_MUT,cost_point)*z1),cost_point);
-                    contribution = dexp*l_path*(1.0f-l_path*den*(0.5f+l_path*DIVIDE_C(den,6.0f)));
-                }
-                else
-                {
-                    float dexp = EXP_C(DIVIDE_C(C_MUT,cost_point)*z1) - EXP_C(-C_MUA*l_path+DIVIDE_C(C_MUT,cost_point)*photon->zpos);
-                    contribution = DIVIDE_C(dexp,den*cost_point);
-                }
+                //too small, use expansion
+                float dexp = DIVIDE_C(EXP_C(DIVIDE_C(C_MUT,cost_point)*z1),cost_point);
+                X = dexp*l_path*(1.0f-l_path*den*(0.5f+l_path*DIVIDE_C(den,6.0f)));
             }
             else
             {
                 float dexp = EXP_C(DIVIDE_C(C_MUT,cost_point)*z1) - EXP_C(-C_MUA*l_path+DIVIDE_C(C_MUT,cost_point)*photon->zpos);
-                contribution = DIVIDE_C(dexp,den);
+                X = DIVIDE_C(dexp,den*cost_point);
             }
 
-            detector_loc[phi_point_idx + cost_point_idx*N_PHI] += fabs(C_MUS*photon->weight*pf*contribution);
+            detector_loc[phi_point_idx + cost_point_idx*N_PHI] += fabs(C_MUS*photon->weight*pf*X);
         }
     }
 }

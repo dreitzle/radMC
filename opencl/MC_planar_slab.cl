@@ -5,8 +5,12 @@
 #include <tyche_i.cl>
 #include <scattering_hg.cl>
 #include <fresnel.cl>
-// #include <detector_integral_slab.cl>
-#include <detector_lf_slab.cl>
+
+#ifdef USE_LF
+    #include <detector_lf_slab.cl>
+#else
+    #include <detector_integral_slab.cl>
+#endif
 
 void reset_photon(Photon* photon)
 {
