@@ -42,21 +42,32 @@ float Sim_Parameter_Config::get_init_cost() const
     return static_cast<float>(std::clamp(sqrt(1.0-n_ratio*n_ratio*(1.0-cost_start*cost_start)),0.0,1.0));
 }
 
-float Sim_Parameter_Config::get_init_weight() const
+float Sim_Parameter_Config::get_mu_crit() const
 {
     const double n = n2/n1;
-    const double mu = get_init_cost();
-    const double mu_crit = (n > 1.0) ? sqrt(n*n-1.0)/n : 0.0;
+    return (n > 1.0) ? sqrt(n*n-1.0)/n : 0.0;
+}
+
+float Sim_Parameter_Config::Rfres(const float mu) const
+{
+    const double n = n2/n1;
+    const double mu_crit = get_mu_crit();
 
     if (mu > mu_crit)
     {
             const double mu0 = sqrt(1.0-n*n*(1.0-mu*mu));
             const double f1 = (mu-n*mu0)/(mu+n*mu0);
             const double f2 = (mu0-n*mu)/(mu0+n*mu);
-            return static_cast<float>(1.0-0.5*f1*f1-0.5*f2*f2);
+            return static_cast<float>(0.5*f1*f1+0.5*f2*f2);
     }
     else //total reflection (should not happen)
-        return 0.0; 
+        return 1.0;
+}
+
+float Sim_Parameter_Config::get_init_weight() const
+{
+    const float mu = get_init_cost();
+    return 1.0f - Rfres(mu);
 }
 
 Config::Config(const std::string &filename)

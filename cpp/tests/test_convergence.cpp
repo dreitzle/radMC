@@ -9,7 +9,7 @@
 int main( int argc, char **argv )
 {
     const unsigned int n_runs = 500U;
-    const double run_seconds = 0.05;
+    const double run_seconds = 0.2;
     
     Config config(std::string(DATA_PATH).append("config_conv3.json"));
 
@@ -100,6 +100,8 @@ int main( int argc, char **argv )
     ncfile.put_variable("radiance_var_int_t",var_int_t.data());
     ncfile.put_variable("radiance_mean_lf_t",mean_lf_t.data());
     ncfile.put_variable("radiance_var_lf_t",var_lf_t.data());
+
+    ncfile.put_attr("mu_crit", config.sim_parameters.get_mu_crit());
 
     ncfile.close_file();
 

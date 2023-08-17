@@ -34,6 +34,8 @@ typedef struct Sim_Parameter_Config {
     float d_slab = 1.0;
     float get_init_weight() const;
     float get_init_cost() const;
+    float get_mu_crit() const;
+    float Rfres(const float mu) const;
 } Sim_Parameter_Config;
 
 class Config
