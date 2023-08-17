@@ -331,7 +331,7 @@ void CLsim::seed_rng(const Config &config)
     std::vector<cl_ulong> seeds(threads);
 
     std::random_device rd;
-    std::mt19937 gen(rd());
+    std::mt19937_64 gen(rd());
     std::uniform_int_distribution<cl_ulong> dist(0, 18446744073709551615ULL);
  
     for(unsigned int i = 0; i < threads; i++)
