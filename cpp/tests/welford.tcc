@@ -25,7 +25,7 @@ class WelfordMeanVariance {
         std::fill(sum_squares.begin(), sum_squares.end(), static_cast<T>(0));
     }
     
-    void update(std::vector<T> &x)
+    void update(const std::vector<T> &x)
     {
         if(x.size() != len)
             throw std::length_error("Welford update: length mismatch.");
