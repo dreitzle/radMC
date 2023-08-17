@@ -258,11 +258,22 @@ void CLsim::create_buffers(const Config &config)
 
     create_buffer(buffer_photons, CL_MEM_READ_WRITE, threads*sizeof(Photon));
 
-    detector.resize(n_costheta*n_phi*threads);
-    std::fill(detector.begin(), detector.end(), 0.0F);
+    detector_r.resize(n_costheta*n_phi*threads);
+    std::fill(detector_r.begin(), detector_r.end(), 0.0F);
 
-    create_buffer(buffer_detector, CL_MEM_READ_WRITE, vector_bytes(detector), nullptr);
-    write_buffer(buffer_detector, detector);
+    create_buffer(buffer_detector_r, CL_MEM_READ_WRITE, vector_bytes(detector_r), nullptr);
+    write_buffer(buffer_detector_r, detector_r);
+
+    sim_slab = false;
+    detector_t.resize(n_costheta*n_phi*threads);
+    std::fill(detector_t.begin(), detector_t.end(), 0.0F);
+
+    if(config.sim_parameters.d_slab > 0.0)
+    {
+        create_buffer(buffer_detector_t, CL_MEM_READ_WRITE, vector_bytes(detector_t), nullptr);
+        write_buffer(buffer_detector_t, detector_t);
+        sim_slab = true;
+    }
 
     cost_points.resize(n_costheta);
     for(unsigned int i = 0; i < n_costheta; i++)
@@ -280,13 +291,34 @@ void CLsim::create_buffers(const Config &config)
     write_buffer(buffer_phi_points, phi_points);
 }
 
+void CLsim::set_args(cl::Kernel &kernel, std::initializer_list<buffer_ref> args)
+{
+    cl_int err = 0;
+    unsigned int argnum = 0U;
+    
+    for(auto buffer : args)
+    {
+        err = kernel.setArg(argnum, buffer.get());
+
+        if(clCheckError(err))
+            throw std::runtime_error("setArg failed.");
+
+        argnum++;
+    }
+}
+
 void CLsim::reset()
 {
     std::fill(simulated_photons_pthread.begin(), simulated_photons_pthread.end(), 0ULL);
     write_buffer(buffer_simulated_photons_pthread, simulated_photons_pthread);
         
-    std::fill(detector.begin(), detector.end(), 0.0F);
-    write_buffer(buffer_detector, detector);
+    std::fill(detector_r.begin(), detector_r.end(), 0.0F);
+    write_buffer(buffer_detector_r, detector_r);
+
+    std::fill(detector_t.begin(), detector_t.end(), 0.0F);
+
+    if(sim_slab)
+        write_buffer(buffer_detector_t, detector_t);
 }
 
 void CLsim::seed_rng(const Config &config)
@@ -318,12 +350,7 @@ void CLsim::seed_rng(const Config &config)
     if(clCheckError(err))
         throw std::runtime_error("RNG seed: loading kernel failed.");
 
-    err = cl_kernel_seed.setArg(0, buffer_rng_seeds);
-    if(clCheckError(err))
-        throw std::runtime_error("RNG seed: setArg 0 failed.");
-    err = cl_kernel_seed.setArg(1, *buffer_rng_states);
-    if(clCheckError(err))
-        throw std::runtime_error("RNG seed: setArg 1 failed.");
+    set_args(cl_kernel_seed,{buffer_rng_seeds, *buffer_rng_states});
 
     cl::Event event;
     err = queue->enqueueNDRangeKernel(cl_kernel_seed, cl::NullRange, cl::NDRange(threads), cl::NDRange(64), NULL, &event);
@@ -365,9 +392,18 @@ void CLsim::run(const Config &config, double timer, bool pbar)
 
     add_define(build_opts, "INIT_COST", config.sim_parameters.get_init_cost());
 
-    /* Setup kernels */
-    if(!cl_program_main)
-        build_program(CL_SIM_SRC, build_opts, cl_program_main);
+    /* Select kernel set */
+    if(sim_slab)
+    {
+        add_define(build_opts, "D_SLAB", config.sim_parameters.d_slab);
+        if(!cl_program_main)
+            build_program(CL_SIM_SLAB_SRC, build_opts, cl_program_main);
+    }
+    else
+    {
+        if(!cl_program_main)
+            build_program(CL_SIM_SEMI_SRC, build_opts, cl_program_main);
+    }
 
     cl_int err = 0;
 
@@ -376,57 +412,35 @@ void CLsim::run(const Config &config, double timer, bool pbar)
     if(clCheckError(err))
         throw std::runtime_error("sim init: loading kernel failed.");
 
-    err = cl_kernel_sim_init.setArg(0, *buffer_photons);
-    if(clCheckError(err))
-        throw std::runtime_error("sim init: setArg 0 failed.");
+    set_args(cl_kernel_sim_init, {*buffer_photons});
 
     cl::Kernel cl_kernel_sim_run(*cl_program_main, "run", &err);
 
     if(clCheckError(err))
         throw std::runtime_error("sim run: loading kernel failed.");
 
-    err = cl_kernel_sim_run.setArg(0, *buffer_rng_states);
-    if(clCheckError(err))
-        throw std::runtime_error("sim run: setArg 0 failed.");
-    err = cl_kernel_sim_run.setArg(1, *buffer_simulated_photons_pthread);
-    if(clCheckError(err))
-        throw std::runtime_error("sim run: setArg 1 failed.");
-    err = cl_kernel_sim_run.setArg(2, *buffer_photons);
-    if(clCheckError(err))
-        throw std::runtime_error("sim run: setArg 2 failed.");
-    err = cl_kernel_sim_run.setArg(3, *buffer_detector);
-    if(clCheckError(err))
-        throw std::runtime_error("sim run: setArg 3 failed.");
-    err = cl_kernel_sim_run.setArg(4, *buffer_cost_points);
-    if(clCheckError(err))
-        throw std::runtime_error("sim run: setArg 4 failed.");
-    err = cl_kernel_sim_run.setArg(5, *buffer_phi_points);
-    if(clCheckError(err))
-        throw std::runtime_error("sim run: setArg 5 failed.");
+    if(sim_slab)
+        set_args(cl_kernel_sim_run,
+                {*buffer_rng_states, *buffer_simulated_photons_pthread, *buffer_photons,
+                 *buffer_detector_r, *buffer_detector_t, *buffer_cost_points, *buffer_phi_points} );
+    else
+        set_args(cl_kernel_sim_run,
+                {*buffer_rng_states, *buffer_simulated_photons_pthread, *buffer_photons,
+                 *buffer_detector_r, *buffer_cost_points, *buffer_phi_points} );
 
     cl::Kernel cl_kernel_sim_finish(*cl_program_main, "finish", &err);
 
     if(clCheckError(err))
         throw std::runtime_error("sim finish: loading kernel failed.");
 
-    err = cl_kernel_sim_finish.setArg(0, *buffer_rng_states);
-    if(clCheckError(err))
-        throw std::runtime_error("sim finish: setArg 0 failed.");
-    err = cl_kernel_sim_finish.setArg(1, *buffer_simulated_photons_pthread);
-    if(clCheckError(err))
-        throw std::runtime_error("sim finish: setArg 1 failed.");
-    err = cl_kernel_sim_finish.setArg(2, *buffer_photons);
-    if(clCheckError(err))
-        throw std::runtime_error("sim finish: setArg 2 failed.");
-    err = cl_kernel_sim_finish.setArg(3, *buffer_detector);
-    if(clCheckError(err))
-        throw std::runtime_error("sim finish: setArg 3 failed.");
-    err = cl_kernel_sim_finish.setArg(4, *buffer_cost_points);
-    if(clCheckError(err))
-        throw std::runtime_error("sim finish: setArg 4 failed.");
-    err = cl_kernel_sim_finish.setArg(5, *buffer_phi_points);
-    if(clCheckError(err))
-        throw std::runtime_error("sim finish: setArg 5 failed.");
+    if(sim_slab)
+        set_args(cl_kernel_sim_finish,
+                {*buffer_rng_states, *buffer_simulated_photons_pthread, *buffer_photons,
+                 *buffer_detector_r, *buffer_detector_t, *buffer_cost_points, *buffer_phi_points} );
+    else
+        set_args(cl_kernel_sim_finish,
+                {*buffer_rng_states, *buffer_simulated_photons_pthread, *buffer_photons,
+                 *buffer_detector_r, *buffer_cost_points, *buffer_phi_points} );
 
     cl::Event event;
 
@@ -542,19 +556,35 @@ void CLsim::run(const Config &config, double timer, bool pbar)
     queue->finish();
 
     /* Read detector data */
-    err = queue->enqueueReadBuffer(*buffer_detector, CL_TRUE, 0, vector_bytes(detector), detector.data(), nullptr, &event);
+    err = queue->enqueueReadBuffer(*buffer_detector_r, CL_TRUE, 0, vector_bytes(detector_r), detector_r.data(), nullptr, &event);
     if(clCheckError(err))
         throw std::runtime_error("Detector copy failed.");
     event.wait();
 
-    detector_sum.resize(det_length);
-    std::fill(detector_sum.begin(), detector_sum.end(), 0.0);
+    if(sim_slab)
+    {
+        err = queue->enqueueReadBuffer(*buffer_detector_t, CL_TRUE, 0, vector_bytes(detector_t), detector_t.data(), nullptr, &event);
+        if(clCheckError(err))
+            throw std::runtime_error("Detector copy failed.");
+        event.wait();
+    }
 
-    for(unsigned int i = 0; i < detector.size(); i++)
-        detector_sum[i%det_length] += (double)detector[i];
+    detector_r_sum.resize(det_length);
+    std::fill(detector_r_sum.begin(), detector_r_sum.end(), 0.0);
+    detector_t_sum.resize(det_length);
+    std::fill(detector_t_sum.begin(), detector_t_sum.end(), 0.0);
 
-    for(unsigned int i = 0; i < detector_sum.size(); i++)
-        detector_sum[i] /= (double)photons_done;
+    for(unsigned int i = 0; i < detector_r.size(); i++)
+        detector_r_sum[i%det_length] += (double)detector_r[i];
+
+    for(unsigned int i = 0; i < detector_t.size(); i++)
+        detector_t_sum[i%det_length] += (double)detector_t[i];
+
+    for(unsigned int i = 0; i < detector_r_sum.size(); i++)
+        detector_r_sum[i] /= (double)photons_done;
+
+    for(unsigned int i = 0; i < detector_t_sum.size(); i++)
+        detector_t_sum[i] /= (double)photons_done;
 }
 
 void CLsim::write_nc(const std::string &filename)
@@ -569,21 +599,23 @@ void CLsim::write_nc(const std::string &filename)
 
     std::vector<int> dimids = ncfile.def_dimensions({"phi","cos_theta"},{n_phi,n_costheta});
 
-    ncfile.def_variable("radiance",NC_DOUBLE,dimids);
+    ncfile.def_variable("radiance_r",NC_DOUBLE,dimids);
+    ncfile.def_variable("radiance_t",NC_DOUBLE,dimids);
     ncfile.def_variable("cos_theta",NC_FLOAT,dimids[1]);
     ncfile.def_variable("phi",NC_FLOAT,dimids[0]);
     ncfile.enddef();
 
     ncfile.put_variable("cos_theta",cost_points.data());
     ncfile.put_variable("phi",phi_points.data());
-    ncfile.put_variable("radiance",detector_sum.data());
+    ncfile.put_variable("radiance_r",detector_r_sum.data());
+    ncfile.put_variable("radiance_t",detector_t_sum.data());
 
     ncfile.close_file();
 }
 
-const std::vector<double>& CLsim::get_result() const
+std::pair<std::vector<double>,std::vector<double>> CLsim::get_result() const
 {
-    return detector_sum;
+    return std::make_pair(detector_r_sum, detector_t_sum);
 }
 
 std::pair<std::vector<cl_float>, std::vector<cl_float>> CLsim::get_points() const

@@ -15,17 +15,32 @@ data = nc.Dataset("./data/test_conv.nc")
 cos_theta = data["cos_theta"][:]
 phi = data["phi"][:]
 
-rad_mean_int = data["radiance_mean_int"][:]
-rad_var_int = data["radiance_var_int"][:]
+rad_mean_int_r = data["radiance_mean_int_r"][:]
+rad_var_int_r = data["radiance_var_int_r"][:]
+rad_mean_lf_r = data["radiance_mean_lf_r"][:]
+rad_var_lf_r = data["radiance_var_lf_r"][:]
 
-rad_mean_lf = data["radiance_mean_lf"][:]
-rad_var_lf = data["radiance_var_lf"][:]
+rad_mean_int_t = data["radiance_mean_int_t"][:]
+rad_var_int_t = data["radiance_var_int_t"][:]
+rad_mean_lf_t = data["radiance_mean_lf_t"][:]
+rad_var_lf_t = data["radiance_var_lf_t"][:]
 
 data.close()
 
 plt.figure(dpi=300)
-plt.loglog(np.abs(cos_theta),rad_var_int[0,:],label="Integral")
-plt.loglog(np.abs(cos_theta),rad_var_lf[0,:],label="LF")
+plt.semilogx(np.abs(cos_theta),rad_mean_int_r[0,:],label="Integral R")
+plt.semilogx(np.abs(cos_theta),rad_mean_lf_r[0,:],'--',label="LF R")
+plt.semilogx(np.abs(cos_theta),rad_mean_int_t[0,:],label="Integral T")
+plt.semilogx(np.abs(cos_theta),rad_mean_lf_t[0,:],'--',label="LF T")
+plt.xlabel("$|\mu|$")
+plt.ylabel("Mean")
+plt.legend()
+
+plt.figure(dpi=300)
+plt.loglog(np.abs(cos_theta),rad_var_int_r[0,:],label="Integral R")
+plt.loglog(np.abs(cos_theta),rad_var_lf_r[0,:],label="LF R")
+plt.loglog(np.abs(cos_theta),rad_var_int_t[0,:],label="Integral T")
+plt.loglog(np.abs(cos_theta),rad_var_lf_t[0,:],label="LF T")
 plt.xlabel("$|\mu|$")
 plt.ylabel("Variance")
 plt.legend()

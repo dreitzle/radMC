@@ -115,10 +115,35 @@ void Config::sync_structs()
     sim_parameters.mus = tree.get<float>("sim_parameters.mus");
     sim_parameters.mua = tree.get<float>("sim_parameters.mua");
     sim_parameters.g = tree.get<float>("sim_parameters.g");
-    sim_parameters.n1 = tree.get<float>("sim_parameters.n1");
-    sim_parameters.n2 = tree.get<float>("sim_parameters.n2");
-    sim_parameters.theta_ls = tree.get<float>("sim_parameters.theta_ls");
-    sim_parameters.d_slab = tree.get<float>("sim_parameters.d_slab");
+
+    try
+    {
+        sim_parameters.n1 = tree.get<float>("sim_parameters.n1");
+        sim_parameters.n2 = tree.get<float>("sim_parameters.n2");
+    }
+    catch(pt::ptree_bad_path const&)
+    {
+        sim_parameters.n1 = 1.0;
+        sim_parameters.n2 = 1.0;
+    }
+
+    try
+    {
+        sim_parameters.theta_ls = tree.get<float>("sim_parameters.theta_ls");
+    }
+    catch(pt::ptree_bad_path const&)
+    {
+        sim_parameters.theta_ls = 0.0;
+    }
+
+    try
+    {
+        sim_parameters.d_slab = tree.get<float>("sim_parameters.d_slab");
+    }
+    catch(pt::ptree_bad_path const&)
+    {
+        sim_parameters.d_slab = 0.0;
+    }
 }
 
 void Config::sync_tree()

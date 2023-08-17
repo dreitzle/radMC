@@ -2,7 +2,8 @@
 #define _CLSIM_HPP_
 
 #define CL_SEED_RNG_SRC "seed.cl"
-#define CL_SIM_SRC "MC_planar.cl"
+#define CL_SIM_SEMI_SRC "MC_planar.cl"
+#define CL_SIM_SLAB_SRC "MC_planar_slab.cl"
 
 #if OPENCL_CPP_HEADER_TYPE == 1
     #include <CL/cl.hpp>
@@ -56,6 +57,9 @@ class CLsim
 
         /* Load file contents as string */
         std::string read_src(std::string &path);
+
+        /* Simulate slab? */
+        bool sim_slab;
 
     protected:
 
@@ -112,7 +116,8 @@ class CLsim
 
         /* Host memory for buffers */
         std::vector<cl_ulong> simulated_photons_pthread;
-        std::vector<cl_float> detector;
+        std::vector<cl_float> detector_r;
+        std::vector<cl_float> detector_t;
         std::vector<cl_float> cost_points;
         std::vector<cl_float> phi_points;
 
@@ -120,14 +125,19 @@ class CLsim
         std::unique_ptr<cl::Buffer> buffer_rng_states;
         std::unique_ptr<cl::Buffer> buffer_simulated_photons_pthread;
         std::unique_ptr<cl::Buffer> buffer_photons;
-        std::unique_ptr<cl::Buffer> buffer_detector;
+        std::unique_ptr<cl::Buffer> buffer_detector_r;
+        std::unique_ptr<cl::Buffer> buffer_detector_t;
         std::unique_ptr<cl::Buffer> buffer_cost_points;
         std::unique_ptr<cl::Buffer> buffer_phi_points;
 
-        std::vector<double> detector_sum;
+        std::vector<double> detector_r_sum;
+        std::vector<double> detector_t_sum;
 
         void build_program(const std::string &file, const std::string &opts, std::unique_ptr<cl::Program> &program);
         void create_buffer(std::unique_ptr<cl::Buffer> &buffer, cl_mem_flags flags, size_t size, void *hostmem = nullptr);
+
+        using buffer_ref = std::reference_wrapper<cl::Buffer>;
+        void set_args(cl::Kernel &kernel, std::initializer_list<buffer_ref> args);
 
         template<typename T>
         void write_buffer(const std::unique_ptr<cl::Buffer> &buffer, const std::vector<T> &vec) const
@@ -175,7 +185,7 @@ class CLsim
 
         /* Output */
         std::pair<std::vector<cl_float>, std::vector<cl_float>> get_points() const; 
-        const std::vector<double>& get_result() const;
+        std::pair<std::vector<double>,std::vector<double>> get_result() const;
         void write_nc(const std::string &filename);
 };
 

@@ -60,6 +60,9 @@ class Hybrid:
         n_2 = parameters.n_2
         d_slab = parameters.d_slab
 
+        # LF?
+        # self.ocl_cfg.add_build_define('USE_LF')
+
         # Include dir for opencl code and set build defines
         self.ocl_cfg.add_path(os.path.join(self.cwd, "../opencl"))  # ./opencl
         # self.ocl_cfg.add_build_define("USE_LF")
@@ -136,9 +139,9 @@ class Hybrid:
         self.photons = Photons(self.n_threads).photons  # photons struct
 
         # initialize detector: each thread has its own local detector
-        self.detector_r = np.zeros(self.cfg["mc_config"]["n_costheta"] *
+        self.detector_loc_r = np.zeros(self.cfg["mc_config"]["n_costheta"] *
                                  self.cfg["mc_config"]["n_phi"]*self.n_threads, dtype=np.float32)
-        self.detector_t = np.zeros(self.cfg["mc_config"]["n_costheta"] *
+        self.detector_loc_t = np.zeros(self.cfg["mc_config"]["n_costheta"] *
                                  self.cfg["mc_config"]["n_phi"]*self.n_threads, dtype=np.float32)
 
         # calculate RNG (tyche_i) states in a seperate kernel and create buffer
@@ -147,18 +150,35 @@ class Hybrid:
                                        cl.mem_flags.COPY_HOST_PTR, hostbuf=rng_states) for context in contexts]
 
         # Create buffers for each device
-        buffer_photons_pthread = [cl.Buffer(context, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR,
-                                            hostbuf=simulated_photons_pthread) for context in contexts]
-        buffer_photons = [cl.Buffer(context, cl.mem_flags.READ_WRITE |
-                                    cl.mem_flags.COPY_HOST_PTR, hostbuf=self.photons) for context in contexts]
-        buffer_detector_t = [cl.Buffer(context, cl.mem_flags.READ_WRITE |
-                                       cl.mem_flags.COPY_HOST_PTR, hostbuf=self.detector_t) for context in contexts]
-        buffer_detector_r = [cl.Buffer(context, cl.mem_flags.READ_WRITE |
-                                       cl.mem_flags.COPY_HOST_PTR, hostbuf=self.detector_r) for context in contexts]
-        buffer_cost_points = [cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                                        hostbuf=self.cost_points) for context in contexts]
-        buffer_phi_points = [cl.Buffer(context, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR,
-                                       hostbuf=self.phi_points) for context in contexts]
+        buffer_photons_pthread = [cl.Buffer(context, cl.mem_flags.READ_WRITE,
+                                            size=simulated_photons_pthread.nbytes) for context in contexts]
+
+        cl.enqueue_copy(queues[0], buffer_photons_pthread[0], simulated_photons_pthread).wait()
+
+        buffer_photons = [cl.Buffer(context, cl.mem_flags.READ_WRITE,
+                                    size=self.photons.nbytes) for context in contexts]
+
+        cl.enqueue_copy(queues[0], buffer_photons[0], self.photons).wait()
+
+        buffer_detector_t = [cl.Buffer(context, cl.mem_flags.READ_WRITE,
+                                       size=self.detector_loc_t.nbytes) for context in contexts]
+
+        cl.enqueue_copy(queues[0], buffer_detector_t[0], self.detector_loc_t).wait()
+
+        buffer_detector_r = [cl.Buffer(context, cl.mem_flags.READ_WRITE,
+                                       size=self.detector_loc_r.nbytes) for context in contexts]
+
+        cl.enqueue_copy(queues[0], buffer_detector_r[0], self.detector_loc_r).wait()
+
+        buffer_cost_points = [cl.Buffer(context, cl.mem_flags.READ_ONLY,
+                                        size=self.cost_points.nbytes) for context in contexts]
+
+        cl.enqueue_copy(queues[0], buffer_cost_points[0], self.cost_points).wait()
+
+        buffer_phi_points = [cl.Buffer(context, cl.mem_flags.READ_ONLY,
+                                       size=self.phi_points.nbytes) for context in contexts]
+
+        cl.enqueue_copy(queues[0], buffer_phi_points[0], self.phi_points).wait()
 
         # Init photons
         kernel_init = programs[0].init_photons
@@ -169,10 +189,10 @@ class Hybrid:
 
         # Create kernel and set kernel args
         kernel = programs[0].run
-        
+
         if(self.sim_slab):
             kernel.set_args(buffer_rng_states[0], buffer_photons_pthread[0],
-                            buffer_photons[0], buffer_detector_t[0], buffer_detector_r[0],
+                            buffer_photons[0], buffer_detector_r[0], buffer_detector_t[0],
                             buffer_cost_points[0], buffer_phi_points[0])
         else:
             kernel.set_args(buffer_rng_states[0], buffer_photons_pthread[0],
@@ -197,7 +217,7 @@ class Hybrid:
             gpu_sim.wait()  # Wait for the calculation to finish
 
             # read photon counting buffer
-            cl.enqueue_copy(queues[0], simulated_photons_pthread, buffer_photons_pthread[0])
+            cl.enqueue_copy(queues[0], simulated_photons_pthread, buffer_photons_pthread[0]).wait()
             # Sum up all simulated photons per thread
             self.simulated_photons = np.sum(simulated_photons_pthread)
 
@@ -215,7 +235,7 @@ class Hybrid:
 
         if(self.sim_slab):
             kernel_f.set_args(buffer_rng_states[0], buffer_photons_pthread[0],
-                            buffer_photons[0], buffer_detector_t[0], buffer_detector_r[0],
+                            buffer_photons[0], buffer_detector_r[0], buffer_detector_t[0],
                             buffer_cost_points[0], buffer_phi_points[0])
         else:
             kernel_f.set_args(buffer_rng_states[0], buffer_photons_pthread[0],
@@ -231,23 +251,23 @@ class Hybrid:
         print("Done!")
 
         # read photon counting buffer
-        cl.enqueue_copy(queues[0], simulated_photons_pthread, buffer_photons_pthread[0])
+        cl.enqueue_copy(queues[0], simulated_photons_pthread, buffer_photons_pthread[0]).wait()
         # Sum up all simulated photons per thread
         self.simulated_photons = np.sum(simulated_photons_pthread)
 
-        cl.enqueue_copy(queues[0], self.detector_r, buffer_detector_r[0])
+        cl.enqueue_copy(queues[0], self.detector_loc_r, buffer_detector_r[0]).wait()
 
         if(self.sim_slab):
-            cl.enqueue_copy(queues[0], self.detector_t, buffer_detector_t[0])
+            cl.enqueue_copy(queues[0], self.detector_loc_t, buffer_detector_t[0]).wait()
 
-        self.detector_loc_r = np.reshape(
-            self.detector_r, (self.n_threads, self.cfg["mc_config"]["n_costheta"], self.cfg["mc_config"]["n_phi"]))
-        self.detector_r = np.sum(self.detector_loc_r, axis=0)  # sum over threads
-        self.detector_loc_t = np.reshape(
-           self.detector_t, (self.n_threads, self.cfg["mc_config"]["n_costheta"], self.cfg["mc_config"]["n_phi"]))
-        self.detector_t = np.sum(self.detector_loc_t, axis=0)  # sum over threads
+        self.detector_loc_r2 = np.reshape(
+            self.detector_loc_r, (self.n_threads, self.cfg["mc_config"]["n_costheta"], self.cfg["mc_config"]["n_phi"]))
+        self.detector_r = np.sum(self.detector_loc_r2, axis=0)  # sum over threads
+        self.detector_loc_t2 = np.reshape(
+           self.detector_loc_t, (self.n_threads, self.cfg["mc_config"]["n_costheta"], self.cfg["mc_config"]["n_phi"]))
+        self.detector_t = np.sum(self.detector_loc_t2, axis=0)  # sum over threads
 
-        cl.enqueue_copy(queues[0], self.photons, buffer_photons[0])
+        #cl.enqueue_copy(queues[0], self.photons, buffer_photons[0])
 
         end_timer = time.time()
         sim_time = end_timer - start_timer
@@ -276,32 +296,33 @@ cost_point = test.cost_points
 
 # %% Slab
 
-# plt.figure(dpi=600)
-# plt.xlabel(r"$\cos{\theta}$")
-# plt.ylabel("Radiance")
-# pn_data_r = np.load("radiance_z0.npz")
-# pn_data_t = np.load("radiance_zL.npz")
-
-# plt.plot(pn_data_r['mu'], pn_data_r['rad'], label="Refl. analytic")
-# plt.plot(pn_data_t['mu'], pn_data_t['rad'], label="Trans. analytic")
-
-# plt.plot(cost_point, rad_r[:, 0], '--', label="Refl. MC")
-# plt.plot(-cost_point, rad_t[:, 0], '--', label="Trans. MC")
-
-# plt.grid()
-# plt.legend()
-
-# %% Semi
-
 plt.figure(dpi=600)
 plt.xlabel(r"$\cos{\theta}$")
 plt.ylabel("Radiance")
-pn_data_r = np.load("radiance.npz")
+pn_data_r = np.load("radiance_z0.npz")
+pn_data_t = np.load("radiance_zL.npz")
 
 plt.plot(pn_data_r['mu'], pn_data_r['rad'], label="Refl. analytic")
+plt.plot(pn_data_t['mu'], pn_data_t['rad'], label="Trans. analytic")
 
 plt.plot(cost_point, rad_r[:, 0], '--', label="Refl. MC")
+plt.plot(-cost_point, rad_t[:, 0], '--', label="Trans. MC")
+plt.ylim(0,3)
 
 plt.grid()
 plt.legend()
+
+# %% Semi
+
+# plt.figure(dpi=600)
+# plt.xlabel(r"$\cos{\theta}$")
+# plt.ylabel("Radiance")
+# pn_data_r = np.load("radiance.npz")
+
+# plt.plot(pn_data_r['mu'], pn_data_r['rad'], label="Refl. analytic")
+
+# plt.plot(cost_point, rad_r[:, 0], '--', label="Refl. MC")
+
+# plt.grid()
+# plt.legend()
 
