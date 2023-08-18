@@ -51,7 +51,7 @@ class CLsim
         cl::Platform platform;
         cl::Device device;
 
-        void init();
+        void init(const char* add_opts);
         void create_context();
         void create_queue();
 
@@ -130,9 +130,11 @@ class CLsim
         std::unique_ptr<cl::Buffer> buffer_cost_points;
         std::unique_ptr<cl::Buffer> buffer_phi_points;
 
+        /* Detector sums over thread local arrays */
         std::vector<double> detector_r_sum;
         std::vector<double> detector_t_sum;
 
+        /* OpenCL setup stuff */
         void build_program(const std::string &file, const std::string &opts, std::unique_ptr<cl::Program> &program);
         void create_buffer(std::unique_ptr<cl::Buffer> &buffer, cl_mem_flags flags, size_t size, void *hostmem = nullptr);
 
@@ -170,12 +172,14 @@ class CLsim
         static int check_device(cl::Platform &_platform, const unsigned int device_num, cl::Device *_device = NULL);
 
         /* Constructors */
-        CLsim(const unsigned int platform_num, const unsigned int device_num);
-        CLsim(cl::Platform &_platform, cl::Device &_device);
+        CLsim(const unsigned int platform_num, const unsigned int device_num, const char* add_opts = nullptr);
+        CLsim(cl::Platform &_platform, cl::Device &_device, const char* add_opts = nullptr);
 
         /* reset build options */
         void reset_build_opts();
         void reset_build_opts(const char* add_opts);
+
+        void set_points(const std::vector<cl_float>& _cost_points, const std::vector<cl_float>& _phi_points);
 
         /* Sim */
         void create_buffers(const Config &config);

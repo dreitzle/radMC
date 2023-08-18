@@ -133,7 +133,8 @@ void CLsim::create_queue()
         throw std::runtime_error("Command queue creation failed.");
 }
 
-CLsim::CLsim(const unsigned int platform_num, const unsigned int device_num)
+/* Contructor without platform and device objects */
+CLsim::CLsim(const unsigned int platform_num, const unsigned int device_num, const char* add_opts)
 {
     if(check_platform(platform_num, &platform))
         throw std::runtime_error("Platform not available.");
@@ -141,13 +142,14 @@ CLsim::CLsim(const unsigned int platform_num, const unsigned int device_num)
     if(check_device(platform, device_num, &device))
         throw std::runtime_error("Device not available.");
 
-    init();
+    init(add_opts);
 }
 
-CLsim::CLsim(cl::Platform &_platform, cl::Device &_device)
+/* Contructor with platform and device objects */
+CLsim::CLsim(cl::Platform &_platform, cl::Device &_device, const char* add_opts)
     :platform(_platform), device(_device)
 {
-    init();
+    init(add_opts);
 }
 
 void CLsim::reset_build_opts()
@@ -156,6 +158,7 @@ void CLsim::reset_build_opts()
     cl_program_seed.reset();
     cl_program_main.reset();
 
+    /* default options */
     default_build_opts.clear();
     default_build_opts.append("-I");
     default_build_opts.append(CL_SOURCE_DIR);
@@ -165,6 +168,7 @@ void CLsim::reset_build_opts()
     default_build_opts.append(" -cl-no-signed-zeros");
 }
 
+/* reset and append additional options */
 void CLsim::reset_build_opts(const char* add_opts)
 {
     reset_build_opts();
@@ -172,7 +176,7 @@ void CLsim::reset_build_opts(const char* add_opts)
     default_build_opts.append(add_opts);
 }
 
-void CLsim::init()
+void CLsim::init(const char* add_opts)
 {
     try
     {
@@ -185,17 +189,23 @@ void CLsim::init()
         throw;
     }
 
-    reset_build_opts();
+    if(add_opts)
+        reset_build_opts(add_opts);
+    else
+        reset_build_opts();
 }
 
+/* Read OpenCL program from file as string */
 std::string CLsim::read_src(std::string &path)
 {
     std::ifstream file(path, std::ifstream::in | std::ifstream::binary);
 
+    /* check length */
     file.seekg(0, file.end);
     unsigned int length = file.tellg();
     file.seekg (0, file.beg);
 
+    /* read */
     char *buffer = new char[length+1];
     file.read(buffer,length);
     buffer[length] = '\0';
@@ -221,10 +231,12 @@ void CLsim::build_program(const std::string &file, const std::string &opts, std:
     if(clCheckError(err))
         throw std::runtime_error("Could not create program from source.");
 
+    /* Build */
     err = program->build(device, opts.c_str());
 
     if(clCheckError(err))
     {
+        /* Try to obtain build log on error */
         std::string build_log;
         if(clCheckError(program->getBuildInfo(device, CL_PROGRAM_BUILD_LOG, &build_log)))
             throw std::runtime_error("Build failed and log could not be obtained.");
@@ -237,17 +249,34 @@ void CLsim::build_program(const std::string &file, const std::string &opts, std:
 void CLsim::create_buffer(std::unique_ptr<cl::Buffer> &buffer, cl_mem_flags flags, size_t size, void *hostmem)
 {
     cl_int err = 0;
-    buffer = std::make_unique<cl::Buffer>(*context, flags, size, hostmem, &err);
+    buffer.reset(new cl::Buffer(*context, flags, size, hostmem, &err));
     if(clCheckError(err))
         throw std::runtime_error("Buffer creation failed.");
 };
 
 void CLsim::create_buffers(const Config &config)
 {
-    const unsigned int threads = config.ocl_config.threads;
-    const unsigned int n_costheta = config.mc_config.n_costheta;
-    const unsigned int n_phi = config.mc_config.n_phi;
+    /* Generate eval points, if none were set */
+    if(cost_points.empty())
+    {
+        const unsigned int n_costheta = config.mc_config.n_costheta;
+        cost_points.resize(n_costheta);
+        for(unsigned int i = 0; i < n_costheta; i++)
+            cost_points[i] = (0.5f*std::cos((2.0f*i-1.0f)/(2.0f*n_costheta)*M_PI)-0.5f);
+    }
+
+    if(phi_points.empty())
+    {
+        const unsigned int n_phi = config.mc_config.n_phi;
+        phi_points.resize(n_phi);
+        const float phi_step = 2.0f*M_PI/n_phi;
+        for(unsigned int i = 0; i < n_phi; i++)
+            phi_points[i] = i*phi_step;
+    }
     
+    const unsigned int threads = config.ocl_config.threads;
+    const unsigned int detsize = cost_points.size()*phi_points.size()*threads;
+
     create_buffer(buffer_rng_states, CL_MEM_READ_WRITE, threads*sizeof(tyche_i_state));
 
     simulated_photons_pthread.resize(threads);
@@ -258,14 +287,14 @@ void CLsim::create_buffers(const Config &config)
 
     create_buffer(buffer_photons, CL_MEM_READ_WRITE, threads*sizeof(Photon));
 
-    detector_r.resize(n_costheta*n_phi*threads);
+    detector_r.resize(detsize);
     std::fill(detector_r.begin(), detector_r.end(), 0.0F);
 
     create_buffer(buffer_detector_r, CL_MEM_READ_WRITE, vector_bytes(detector_r), nullptr);
     write_buffer(buffer_detector_r, detector_r);
 
     sim_slab = false;
-    detector_t.resize(n_costheta*n_phi*threads);
+    detector_t.resize(detsize);
     std::fill(detector_t.begin(), detector_t.end(), 0.0F);
 
     if(config.sim_parameters.d_slab > 0.0)
@@ -275,17 +304,8 @@ void CLsim::create_buffers(const Config &config)
         sim_slab = true;
     }
 
-    cost_points.resize(n_costheta);
-    for(unsigned int i = 0; i < n_costheta; i++)
-        cost_points[i] = (0.5f*std::cos((2.0f*i-1.0f)/(2.0f*n_costheta)*M_PI)-0.5f);
-
     create_buffer(buffer_cost_points, CL_MEM_READ_ONLY, vector_bytes(cost_points), nullptr);
     write_buffer(buffer_cost_points, cost_points);
-
-    phi_points.resize(n_phi);
-    const float phi_step = 2.0f*M_PI/n_phi;
-    for(unsigned int i = 0; i < n_phi; i++)
-        phi_points[i] = i*phi_step;
 
     create_buffer(buffer_phi_points, CL_MEM_READ_ONLY, vector_bytes(phi_points), nullptr);
     write_buffer(buffer_phi_points, phi_points);
@@ -307,8 +327,28 @@ void CLsim::set_args(cl::Kernel &kernel, std::initializer_list<buffer_ref> args)
     }
 }
 
+void CLsim::set_points(const std::vector<cl_float>& _cost_points, const std::vector<cl_float>& _phi_points)
+{
+    cost_points = _cost_points;
+    phi_points = _phi_points;
+
+    /* if there are already buffers for these arrays, we need new ones */
+    if(buffer_cost_points)
+    {
+        create_buffer(buffer_cost_points, CL_MEM_READ_ONLY, vector_bytes(cost_points), nullptr);
+        write_buffer(buffer_cost_points, cost_points);
+    }
+
+    if(buffer_phi_points)
+    {
+        create_buffer(buffer_phi_points, CL_MEM_READ_ONLY, vector_bytes(phi_points), nullptr);
+        write_buffer(buffer_phi_points, phi_points);
+    }
+}
+
 void CLsim::reset()
 {
+    /* Zero photon counters and detectors */
     std::fill(simulated_photons_pthread.begin(), simulated_photons_pthread.end(), 0ULL);
     write_buffer(buffer_simulated_photons_pthread, simulated_photons_pthread);
         
@@ -328,6 +368,7 @@ void CLsim::seed_rng(const Config &config)
     if(!cl_program_seed)
         build_program(CL_SEED_RNG_SRC, default_build_opts, cl_program_seed);
 
+    /* Generate 64 bit seeds for RNG */
     std::vector<cl_ulong> seeds(threads);
 
     std::random_device rd;
@@ -337,6 +378,7 @@ void CLsim::seed_rng(const Config &config)
     for(unsigned int i = 0; i < threads; i++)
         seeds[i] = dist(gen);
 
+    /* Call kernel to generate initial RNG states from seeds */
     cl_int err = 0;
     cl::Buffer buffer_rng_seeds(*context, CL_MEM_READ_ONLY, vector_bytes(seeds), nullptr, &err);
     
@@ -371,8 +413,8 @@ void CLsim::run(const Config &config, double timer, bool pbar)
 
     add_define(build_opts, "N_SCAT_PTHREAD", config.mc_config.n_scat_pthread);
     add_define(build_opts, "N_SCAT_MAX", config.mc_config.n_scat_max);
-    add_define(build_opts, "N_PHI", config.mc_config.n_phi);
-    add_define(build_opts, "N_COSTHETA", config.mc_config.n_costheta);
+    add_define(build_opts, "N_PHI", phi_points.size());
+    add_define(build_opts, "N_COSTHETA", cost_points.size());
 
     add_define(build_opts, "C_MUS", config.sim_parameters.mus);
     add_define(build_opts, "C_MUA", config.sim_parameters.mua);
@@ -405,6 +447,7 @@ void CLsim::run(const Config &config, double timer, bool pbar)
             build_program(CL_SIM_SEMI_SRC, build_opts, cl_program_main);
     }
 
+    /* Prepare kernels */
     cl_int err = 0;
 
     cl::Kernel cl_kernel_sim_init(*cl_program_main, "init_photons", &err);
@@ -569,6 +612,7 @@ void CLsim::run(const Config &config, double timer, bool pbar)
         event.wait();
     }
 
+    /* Sum over threads */
     detector_r_sum.resize(det_length);
     std::fill(detector_r_sum.begin(), detector_r_sum.end(), 0.0);
     detector_t_sum.resize(det_length);
