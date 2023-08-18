@@ -24,7 +24,7 @@ void scatter_photon(Dir3d* direction, tyche_i_state* state)
 {
     #if !defined(C_GF) // g = 0
     
-    direction->cost = tyche_i_float((*state))*2.0f-1.0f;
+    direction->cost = clamp(tyche_i_float((*state))*2.0f-1.0f,-1.0f,1.0f);
     direction->sint = SQRT_C(1.0f-direction->cost*direction->cost);
     direction->sinp = sincos(tyche_i_float((*state))*M_2PI_F, &(direction->cosp));
     
@@ -41,13 +41,9 @@ void scatter_photon(Dir3d* direction, tyche_i_state* state)
     float cosp;
     float sinp = sincos(tyche_i_float((*state))*M_2PI_F, &cosp);
 
-    float x = -sinp*sint*direction->sinp+direction->cosp*(cost*direction->sint+cosp*sint*direction->cost);
-    float y = cost*direction->sinp*direction->sint+sint*(direction->cosp*sinp+cosp*direction->cost*direction->sinp);
-    float z = direction->cost*cost-cosp*sint*direction->sint;
-
-    x = clamp(x,-1.0f,1.0f);
-    y = clamp(y,-1.0f,1.0f);
-    z = clamp(z,-1.0f,1.0f);
+    float x = clamp(-sinp*sint*direction->sinp+direction->cosp*(cost*direction->sint+cosp*sint*direction->cost),-1.0f,1.0f);
+    float y = clamp(cost*direction->sinp*direction->sint+sint*(direction->cosp*sinp+cosp*direction->cost*direction->sinp),-1.0f,1.0f);
+    float z = clamp(direction->cost*cost-cosp*sint*direction->sint,-1.0f,1.0f);
     
     float den = SQRT_C(x*x+y*y);
     
