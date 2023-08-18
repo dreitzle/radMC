@@ -124,6 +124,14 @@ add_executable( test_welford tests/test_welford.cpp )
 target_link_libraries( test_welford ${BOOST_TEST_LIBS} )
 add_test( Welford_algorithm test_welford )
 
+add_executable( test_mc_semi_lf tests/test_semi_lf.cpp )
+target_link_libraries( test_mc_semi_lf radMC )
+add_test( MC_semi_lf test_mc_semi_lf )
+
+add_executable( test_mc_semi_int tests/test_semi_int.cpp )
+target_link_libraries( test_mc_semi_int radMC )
+add_test( MC_semi_int test_mc_semi_int )
+
 add_executable( test_convergence tests/test_convergence.cpp )
 target_link_libraries( test_convergence radMC )
 
