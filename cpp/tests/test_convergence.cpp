@@ -11,7 +11,7 @@ int main( int argc, char **argv )
     const unsigned int n_runs = 500U;
     const double run_seconds = 0.2;
     
-    Config config(std::string(DATA_PATH).append("config_conv3.json"));
+    Config config(std::string(DATA_PATH).append("config_conv1.json"));
 
     const unsigned int n_costheta = config.mc_config.n_costheta;
     const unsigned int n_phi = config.mc_config.n_phi;

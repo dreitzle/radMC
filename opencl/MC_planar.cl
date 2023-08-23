@@ -60,7 +60,7 @@ __kernel void run(__global tyche_i_state* rng_states_d,
     for(int idx = 0; idx < N_COSTHETA*N_PHI; ++idx)
         detector_loc[idx] = 0.0f;
     
-    bool was_reflected = false; 
+    bool was_reflected = false;
     
     // Main photon loop
     for(uint n_scat_pthread = 0; n_scat_pthread < N_SCAT_PTHREAD; ++n_scat_pthread)
@@ -105,7 +105,7 @@ __kernel void run(__global tyche_i_state* rng_states_d,
             
             // count interaction
             ++photon.scat_counter;
-        
+
             was_reflected = false;
         }
         else // scattering

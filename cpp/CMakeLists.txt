@@ -132,6 +132,14 @@ add_executable( test_mc_semi_int tests/test_semi_int.cpp )
 target_link_libraries( test_mc_semi_int radMC )
 add_test( MC_semi_int test_mc_semi_int )
 
+add_executable( test_mc_slab_lf tests/test_slab_lf.cpp )
+target_link_libraries( test_mc_slab_lf radMC )
+add_test( MC_slab_lf test_mc_slab_lf )
+
+add_executable( test_mc_slab_int tests/test_slab_int.cpp )
+target_link_libraries( test_mc_slab_int radMC )
+add_test( MC_slab_int test_mc_slab_int )
+
 add_executable( test_convergence tests/test_convergence.cpp )
 target_link_libraries( test_convergence radMC )
 

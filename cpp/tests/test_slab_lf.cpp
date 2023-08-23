@@ -1,4 +1,4 @@
-#define BOOST_TEST_MODULE mc_semi_int
+#define BOOST_TEST_MODULE mc_slab_lf
 #include <boost/test/unit_test.hpp>
 
 #include "config.hpp"
@@ -6,17 +6,17 @@
 #include "netcdf_interface_mc.hpp"
 
 /* File with config (json) and reference values (netcdf) */
-#define REF_FILE "data_test_semi1.nc"
-#define CONF_FILE "config_test_semi1.json"
+#define REF_FILE "data_test_slab1.nc"
+#define CONF_FILE "config_test_slab1.json"
 
 /* Required precision in percent*/
 #define PREC 0.5
 
 /* Test Legendre algorithms with double precision */
-BOOST_AUTO_TEST_SUITE( test_int )
+BOOST_AUTO_TEST_SUITE( test_lf )
 
     /* Test double vector */
-    BOOST_AUTO_TEST_CASE( case1_int )
+    BOOST_AUTO_TEST_CASE( case1_lf )
     {
         /* reference data */
         netcdf_interface ncfile(std::string(DATA_PATH).append(REF_FILE));
@@ -25,10 +25,12 @@ BOOST_AUTO_TEST_SUITE( test_int )
         std::vector<cl_float> cost_points;
         std::vector<cl_float> phi_points;
         std::vector<cl_float> res_r_ref;
+        std::vector<cl_float> res_t_ref;
 
         ncfile.get_variable_vector("cost", cost_points);
         ncfile.get_variable_vector("phi", phi_points);
-        ncfile.get_variable_vector("radiance", res_r_ref);
+        ncfile.get_variable_vector("radiance_top", res_r_ref);
+        ncfile.get_variable_vector("radiance_bottom", res_t_ref);
 
         ncfile.close_file();
 
@@ -39,7 +41,7 @@ BOOST_AUTO_TEST_SUITE( test_int )
         const unsigned int n_phi = phi_points.size();
         const unsigned int detsize = n_costheta*n_phi;
 
-        CLsim sim(config.ocl_config.platform, config.ocl_config.devices[0]);
+        CLsim sim(config.ocl_config.platform, config.ocl_config.devices[0], "-DUSE_LF");
 
         sim.set_points(cost_points,phi_points);
         sim.create_buffers(config);
@@ -52,7 +54,7 @@ BOOST_AUTO_TEST_SUITE( test_int )
             BOOST_CHECK_CLOSE( res_r[i], res_r_ref[i] , PREC);
 
         for(unsigned int i = 0; i < detsize; i++)
-            BOOST_CHECK_SMALL( res_t[i], PREC);
+            BOOST_CHECK_CLOSE( res_t[i], res_t_ref[i] , PREC);
     }
 
 BOOST_AUTO_TEST_SUITE_END()

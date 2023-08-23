@@ -5,8 +5,9 @@
 #include "clsim.hpp"
 #include "netcdf_interface_mc.hpp"
 
-/* File with reference values (netcdf) */
+/* File with config (json) and reference values (netcdf) */
 #define REF_FILE "data_test_semi1.nc"
+#define CONF_FILE "config_test_semi1.json"
 
 /* Required precision in percent*/
 #define PREC 1.0
@@ -32,7 +33,7 @@ BOOST_AUTO_TEST_SUITE( test_lf )
         ncfile.close_file();
 
         /* MC Simulation */
-        Config config(std::string(DATA_PATH).append("config_test_semi1.json"));
+        Config config(std::string(DATA_PATH).append(CONF_FILE));
 
         const unsigned int n_costheta = cost_points.size();
         const unsigned int n_phi = phi_points.size();
