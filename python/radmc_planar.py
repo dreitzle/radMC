@@ -84,24 +84,24 @@ class Hybrid:
 
         self.ocl_cfg.add_build_define(f'C_MUT={mut}f')
 
+        # calculate initial direction after refraction
+        parameters.calc_start_dir()
+        # calculate intial weight accounting for reflections
+        parameters.calc_R_fresnel()
+
+        # intial weight considering Fresnel
+        self.ocl_cfg.add_build_define(
+            f'INIT_WEIGHT={1-parameters.R}f')
+        # intial cost direction considering refraction
+        self.ocl_cfg.add_build_define(
+            f'INIT_COST={parameters.cost_start}f')
+
         if abs(n_1-n_2) > 1e-6:  # refractive index mismatch
 
             self.ocl_cfg.add_build_define(
                 f'C_N1={n_1}f')  # n outside of medium
             self.ocl_cfg.add_build_define(
                 f'C_N2={n_2}f')  # n inside of medium
-
-            # calculate initial direction after refraction
-            parameters.calc_start_dir()
-            # calculate intial weight accounting for reflections
-            parameters.calc_R_fresnel()
-
-            # intial weight considering Fresnel
-            self.ocl_cfg.add_build_define(
-                f'INIT_WEIGHT={1-parameters.R}f')
-            # intial cost direction considering refraction
-            self.ocl_cfg.add_build_define(
-                f'INIT_COST={parameters.cost_start}f')
 
         if d_slab > 0:  # Kernel for slab
 
