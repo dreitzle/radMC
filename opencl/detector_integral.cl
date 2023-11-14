@@ -40,7 +40,7 @@ void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
             {
                 //too small, use expansion
                 float dexp = DIVIDE_C(EXP_C(DIVIDE_C(C_MUT,cost_point)*z1),cost_point);
-                X = dexp*l_path*(1.0f-l_path*den*(0.5f+l_path*DIVIDE_C(den,6.0f)));
+                X = dexp*l_path*(1.0f-l_path*den*(0.5f-l_path*DIVIDE_C(den,6.0f)));
             }
             else
             {

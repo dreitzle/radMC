@@ -52,7 +52,7 @@ void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
             if(fabs(den1) < 1e-4f)
             {
                 //too small, use expansion
-                float tmp = l_path*(1.0f-l_path*den1*(0.5f+l_path*DIVIDE_C(den1,6.0f)));
+                float tmp = l_path*(1.0f-l_path*den1*(0.5f-l_path*DIVIDE_C(den1,6.0f)));
                 X = tmp*DIVIDE_C(EXP_C(DIVIDE_C(C_MUT,cost_point)*z1),cost_point);
             }
             else
@@ -61,7 +61,7 @@ void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
             if(fabs(den2) < 1e-4f)
             {
                 //too small, use expansion
-                float tmp = l_path*(1.0f-l_path*den2*(0.5f+l_path*DIVIDE_C(den2,6.0f)));
+                float tmp = l_path*(1.0f-l_path*den2*(0.5f-l_path*DIVIDE_C(den2,6.0f)));
                 Y = tmp*DIVIDE_C(EXP_C(DIVIDE_C(C_MUT,cost_point)*(D_SLAB-z1)),cost_point);
             }
             else
