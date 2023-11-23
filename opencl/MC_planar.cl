@@ -114,11 +114,25 @@ __kernel void run(__global tyche_i_state* rng_states_d,
             ++photon.scat_counter;
         }
         
-        // end photon if max number of scatterings exceeded or weight below threshold
-        if(photon.scat_counter >= N_SCAT_MAX || photon.weight < 1e-8f) 
+        // end photon if max number of scatterings
+        if(photon.scat_counter >= N_SCAT_MAX) 
         {
             reset_photon(&photon);
             ++simulated_photons_pthread_d[thread_id];
+        }
+
+        // russian roulette if weight below threshold
+        if(photon.weight < 1e-5f) 
+        {
+            if(tyche_i_float(state) < 0.1f)
+            {
+                photon.weight *= 10.0f;
+            }
+            else
+            {
+                reset_photon(&photon);
+                ++simulated_photons_pthread_d[thread_id];
+            }    
         }
     }
 
@@ -208,9 +222,24 @@ __kernel void finish(__global tyche_i_state* rng_states_d,
             ++photon.scat_counter;
         }
 
-        // end photon if max number of scatterings exceeded or weight below threshold
-        if(photon.scat_counter >= N_SCAT_MAX || photon.weight < 1e-8f) 
+        // end photon if max number of scatterings
+        if(photon.scat_counter >= N_SCAT_MAX) 
+        {
             break;
+        }
+
+        // russian roulette if weight below threshold
+        if(photon.weight < 1e-5f) 
+        {
+            if(tyche_i_float(state) < 0.1f)
+            {
+                photon.weight *= 10.0f;
+            }
+            else
+            {
+                break;
+            }    
+        }
     }
     
     barrier(CLK_GLOBAL_MEM_FENCE);
