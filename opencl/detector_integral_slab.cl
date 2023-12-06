@@ -71,8 +71,8 @@ void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
             float c1 = pf1*X + rfac*(r0*pf1*atten2*X+pf2*atten*Y);
             float c2 = pf2*Y + rfac*(r0*pf2*atten2*Y+pf1*atten*X);
 
-           detector_r_loc[phi_point_idx + cost_point_idx*N_PHI] += fabs(C_MUS*photon->weight*c1);
-           detector_t_loc[phi_point_idx + cost_point_idx*N_PHI] += fabs(C_MUS*photon->weight*c2);
+           detector_r_loc[phi_point_idx + cost_point_idx*N_PHI] -= C_MUS*photon->weight*c1;
+           detector_t_loc[phi_point_idx + cost_point_idx*N_PHI] -= C_MUS*photon->weight*c2;
         }
     }
 }

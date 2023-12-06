@@ -48,7 +48,7 @@ void calc_rad_contribution(Photon* photon, const float l_path, const float z1,
                 X = DIVIDE_C(dexp,den*cost_point);
             }
 
-            detector_loc[phi_point_idx + cost_point_idx*N_PHI] += fabs(C_MUS*photon->weight*pf*X);
+            detector_loc[phi_point_idx + cost_point_idx*N_PHI] -= C_MUS*photon->weight*pf*X;
         }
     }
 }
