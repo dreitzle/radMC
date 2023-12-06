@@ -1,6 +1,6 @@
 {
     "mc_config": {
-        "photons": 1e6,
+        "photons": 1e8,
         "n_scat_pthread": 200,
         "n_scat_max": 100000,
         "n_phi": 1,
@@ -9,13 +9,13 @@
     "opencl_config": {
         "platform": 0,
         "devices": [
-            7
+            0
         ],
         "threads": 65536
     },
     "sim_parameters": {
-        "mua": 0.5,
-        "mus": 0.1,
+        "mua": 0.1,
+        "mus": 2.5,
         "g": 0.8,
         "n1": 1.0,
         "n2": 1.4,
