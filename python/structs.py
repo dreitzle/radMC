@@ -6,7 +6,7 @@ Created on Sat Jun 17 17:56:14 2023
 """
 
 import numpy as np
-
+import sys
 
 class Photons:
 
@@ -45,8 +45,13 @@ class Sim_Parameters:
         if (self.theta_ls > 0.000001):  # light source is not perpendicular to surface
 
             n_ratio = self.n_1/self.n_2
-
-            self.cost_start = self.cost_start*n_ratio - (n_ratio*self.cost_start - np.sqrt(1.0 - n_ratio*n_ratio*(1.0 - self.cost_start*self.cost_start)))
+            
+            if (1.0 - n_ratio*n_ratio*(1.0 - self.cost_start*self.cost_start)) < 0: # started photons are within total reflection range
+                
+                print("Started photons are within total reflection range, ending simulation...")
+                sys.exit(0)    
+            
+            self.cost_start = np.sqrt(1.0 - n_ratio*n_ratio*(1.0 - self.cost_start*self.cost_start))
 
     def calc_R_fresnel(self):
 

@@ -60,7 +60,7 @@ class Hybrid:
         n_2 = parameters.n_2
         d_slab = parameters.d_slab
 
-        # LF?
+        # use local estimate?
         # self.ocl_cfg.add_build_define('USE_LF')
 
         # Include dir for opencl code and set build defines
@@ -311,18 +311,3 @@ plt.ylim(0,3)
 
 plt.grid()
 plt.legend()
-
-# %% Semi
-
-# plt.figure(dpi=600)
-# plt.xlabel(r"$\cos{\theta}$")
-# plt.ylabel("Radiance")
-# pn_data_r = np.load("radiance.npz")
-
-# plt.plot(pn_data_r['mu'], pn_data_r['rad'], label="Refl. analytic")
-
-# plt.plot(cost_point, rad_r[:, 0], '--', label="Refl. MC")
-
-# plt.grid()
-# plt.legend()
-
